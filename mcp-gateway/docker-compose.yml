@@ -1,0 +1,81 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: mcp-gateway-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  artifactory-mcp:
+    build:
+      context: ../artifcatory
+      dockerfile: Dockerfile
+    container_name: artifactory-mcp-server
+    environment:
+      ARTIFACTORY_BASE_URL: ${ARTIFACTORY_BASE_URL:-http://host.docker.internal:8081/artifactory}
+      # --- Open mode (shared token) ---
+      # Preferred: JFrog access/identity token (company or free-tier), sent as Bearer.
+      ARTIFACTORY_ACCESS_TOKEN: ${ARTIFACTORY_ACCESS_TOKEN:-}
+      # Legacy fallback for older self-hosted API keys only.
+      ARTIFACTORY_API_KEY: ${ARTIFACTORY_API_KEY:-}
+      # --- Secure mode (per-user OAuth) ---
+      # When set, the server exchanges each user's forwarded OIDC id_token for a
+      # scoped JFrog token via /access/api/v1/oidc/token instead of the shared token.
+      ARTIFACTORY_OIDC_PROVIDER_NAME: ${ARTIFACTORY_OIDC_PROVIDER_NAME:-}
+      HOST: 0.0.0.0
+      PORT: 8091
+      MCP_DISABLE_DNS_REBINDING: "true"
+    ports:
+      - "8091:8091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8091/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-gateway
+    ports:
+      - "8090:8090"
+    # Mount configs so edits apply on `docker compose up -d gateway` (no rebuild).
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      MCP_GATEWAY_CONFIG_FILE: ./configs/local.yml
+      # Public origin clients use to reach the gateway. Defaults to localhost for
+      # open-mode; set to your https tunnel URL for OAuth clients (Cursor/Claude).
+      GATEWAY_BASE_URL: ${GATEWAY_BASE_URL:-http://localhost:8090}
+      # Toggle secure (per-user OAuth) mode by pointing these at the secure-* files.
+      # Leave unset for the default open (shared-token) mode.
+      OAUTH_CONFIG_FILE: ${OAUTH_CONFIG_FILE:-./configs/local-oauth-config.yml}
+      MCP_CONFIG_FILE: ${MCP_CONFIG_FILE:-./configs/local-mcp-config.yml}
+      # Google OAuth client (only needed in secure mode)
+      GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      # OpenTelemetry: when set (e.g. http://otel-collector:4318), the gateway
+      # exports traces + metrics to that OTLP collector instead of the console.
+      # Bring up the stack in ./monitoring to populate Grafana. Leave empty to
+      # keep the default local console exporter.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      artifactory-mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

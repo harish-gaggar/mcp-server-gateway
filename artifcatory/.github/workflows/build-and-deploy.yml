@@ -1,0 +1,192 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'k8s/**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual trigger
+
+env:
+  IMAGE_NAME: artifactory-mcp-server
+  # Google Artifact Registry configuration - update with your values:
+  REGISTRY: us-docker.pkg.dev  # Google Artifact Registry
+  PROJECT_ID: your-gcp-project-id
+  REGION: us-central1
+  REPOSITORY: your-artifact-registry-repo  # Your Artifact Registry repository name
+
+jobs:
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # For pushing kustomization updates
+      id-token: write  # For Workload Identity Federation
+    
+    outputs:
+      image-tag: ${{ steps.image_tag.outputs.tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Generate image tag
+        id: image_tag
+        run: |
+          # Use commit SHA and Unix timestamp
+          TAG="${GITHUB_SHA:0:7}-$(date +%s)"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "full_image=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${TAG}" >> $GITHUB_OUTPUT
+          echo "📦 Image tag: ${TAG}"
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image_tag.outputs.full_image }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+      - name: Update Kustomization with new image
+        if: github.ref == 'refs/heads/main'
+        run: |
+          cd k8s
+          cat <<EOF > kustomization.yaml
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          
+          namespace: artifactory-mcp-server
+          
+          resources:
+            - namespace.yaml
+            - deployment.yaml
+            - service.yaml
+          
+          commonLabels:
+            app: artifactory-mcp-server
+            managed-by: kustomize
+          
+          images:
+            - name: artifactory-mcp-server
+              newName: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}
+              newTag: ${{ steps.image_tag.outputs.tag }}
+          EOF
+
+      - name: Commit and push updated manifests
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add k8s/kustomization.yaml
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🚀 Update image to ${{ steps.image_tag.outputs.tag }}
+            
+            Image: ${{ steps.image_tag.outputs.full_image }}
+            Commit: ${{ github.sha }}
+            Triggered by: ${{ github.actor }}"
+            git push
+          fi
+
+  deploy:
+    name: Deploy to GKE (via Flux)
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install Flux CLI
+        run: |
+          curl -s https://fluxcd.io/install.sh | sudo bash
+          flux --version
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials ${{ secrets.GKE_CLUSTER_NAME }} \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT_ID }}
+
+      - name: Trigger Flux reconciliation
+        run: |
+          # Force Flux to sync immediately
+          flux reconcile source git flux-system --with-source || echo "Flux source reconcile completed"
+          flux reconcile kustomization artifactory-mcp-server --with-source || echo "Kustomization reconcile completed"
+
+      - name: Wait for deployment
+        run: |
+          kubectl rollout status deployment/artifactory-mcp-server \
+            -n artifactory-mcp-server \
+            --timeout=5m
+
+      - name: Verify deployment
+        run: |
+          echo "✅ Deployment successful!"
+          echo ""
+          echo "Pod status:"
+          kubectl get pods -n artifactory-mcp-server -l app=artifactory-mcp-server
+          echo ""
+          echo "Service:"
+          kubectl get svc artifactory-mcp-server -n artifactory-mcp-server
+          echo ""
+          echo "Recent events:"
+          kubectl get events -n artifactory-mcp-server --sort-by='.lastTimestamp' | tail -10
+
+      - name: Post deployment summary
+        run: |
+          echo "### 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** \`${{ needs.build.outputs.image-tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** \`artifactory-mcp-server\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Cluster:** \`${{ secrets.GKE_CLUSTER_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Pods" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          kubectl get pods -n artifactory-mcp-server -l app=artifactory-mcp-server >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+

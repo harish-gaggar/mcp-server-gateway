@@ -1,0 +1,45 @@
+# Local development configuration for the MCP Gateway book example.
+# base_url is the public origin clients use to reach the gateway. For local
+# open-mode testing it is http://localhost:8090. For OAuth-capable clients
+# (Cursor, Claude Desktop) it must be an https origin (e.g. a Cloudflare
+# tunnel), because those clients refuse to run the OAuth flow over cleartext
+# http. Override it via GATEWAY_BASE_URL without editing this file.
+base_url: ${GATEWAY_BASE_URL:-http://localhost:8090}
+port: 8090
+host: 0.0.0.0
+# Subdomain-per-server routing (github.<host>, artifactory.<host>, ...). This is
+# how the production gateway is deployed and is REQUIRED for real MCP clients
+# (Cursor, Claude Desktop): those clients do OAuth discovery at the ORIGIN ROOT,
+# so each server must live at its own origin. With subdomains on, a request to
+# artifactory.<base_host>/mcp is internally rewritten to the /artifactory
+# namespace, and all OAuth metadata is advertised at the subdomain origin root.
+allow_subdomains: true
+
+cors:
+  enabled: true
+  allowed_origins: '*'
+
+log_level: debug
+http_log_level: debug
+
+redis:
+  host: redis
+  port: 6379
+
+token:
+  encryption_key: ${TOKEN_ENCRYPTION_KEY}
+
+dcr:
+  enabled: true
+  allowed_redirect_uris:
+    - loopback
+    - '^cursor://'
+
+cimd:
+  enabled: true
+  allowed_redirect_uris:
+    - loopback
+    - '^cursor://'
+
+oauth_providers: file:${OAUTH_CONFIG_FILE:-./configs/local-oauth-config.yml}
+mcp_servers: file:${MCP_CONFIG_FILE:-./configs/local-mcp-config.yml}

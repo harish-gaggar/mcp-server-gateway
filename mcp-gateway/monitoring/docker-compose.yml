@@ -1,0 +1,73 @@
+# Open-source observability stack for the MCP gateway.
+#
+#   gateway --OTLP--> otel-collector --> Tempo   (traces)
+#                                    \-> Prometheus (metrics, scraped)
+#                                         \-> Grafana (dashboards UI)
+#
+# It attaches to the gateway's existing Docker network (created by the main
+# compose project "mcp-gateway"), so the gateway can reach `otel-collector`.
+#
+# Usage:
+#   1) set OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 in ../.env
+#   2) docker compose -f docker-compose.yml up -d gateway   (recreate gateway)
+#   3) docker compose -f monitoring/docker-compose.yml up -d
+#   4) open http://localhost:3000  (Grafana, anonymous admin)
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4318:4318"   # OTLP http (also usable from the host)
+      - "8889:8889"   # prometheus scrape endpoint
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml"]
+    user: "0:0"
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "3200:3200"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+
+volumes:
+  tempo-data:
+
+# Reuse the network created by the main compose project (directory name
+# "mcp-gateway" -> network "mcp-gateway_default"). Must already exist.
+networks:
+  default:
+    name: mcp-gateway_default
+    external: true

@@ -1,0 +1,14 @@
+# MCP backends reachable from the gateway.
+# Servers without auth_provider are open on the local network (no OAuth required).
+
+artifactory:
+  name: artifactory
+  description: JFrog Artifactory MCP server (local Docker)
+  endpoint: http://artifactory-mcp:8091/mcp
+
+# Example: add more backends by pointing at their /mcp endpoint.
+# github:
+#   name: github
+#   description: GitHub MCP server
+#   endpoint: http://github-mcp:8080/mcp
+#   auth_provider: github

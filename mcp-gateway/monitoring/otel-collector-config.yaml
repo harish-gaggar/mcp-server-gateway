@@ -1,0 +1,41 @@
+# OpenTelemetry Collector — receives OTLP from the MCP gateway and fans it out:
+#   traces  -> Tempo   (via OTLP)
+#   metrics -> Prometheus (scraped from this collector's /metrics on :8889)
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+
+exporters:
+  # Send traces to Tempo's OTLP ingest port.
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  # Expose collected metrics for Prometheus to scrape. Turning on
+  # resource_to_telemetry_conversion promotes resource attributes
+  # (service.name, etc.) to Prometheus labels.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    resource_to_telemetry_conversion:
+      enabled: true
+  # Handy while developing the stack; prints a one-line summary per batch.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

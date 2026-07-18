@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2025",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rootDir": ".",
+    "paths": {
+      "~/*": [
+        "./src/*"
+      ]
+    },
+    "sourceMap": true,
+    "declaration": true,
+    "outDir": "dist",
+    "importHelpers": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true
+  }
+}

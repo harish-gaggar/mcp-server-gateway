@@ -1,0 +1,15 @@
+# Never commit files with real credentials
+secret.yaml
+*-secret.yaml
+*.secret.yaml
+
+# Backup files
+*.bak
+*.backup
+
+# Environment-specific overrides
+*.local.yaml
+*.prod.yaml
+
+
+

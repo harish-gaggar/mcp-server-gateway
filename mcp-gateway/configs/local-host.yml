@@ -1,0 +1,34 @@
+# Use when running the gateway on the host (npm run dev) while backends run in Docker.
+base_url: http://localhost:8090
+port: 8090
+host: 0.0.0.0
+allow_subdomains: false
+
+cors:
+  enabled: true
+  allowed_origins: '*'
+
+log_level: debug
+http_log_level: debug
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+
+token:
+  encryption_key: ${TOKEN_ENCRYPTION_KEY}
+
+dcr:
+  enabled: true
+  allowed_redirect_uris:
+    - loopback
+    - '^cursor://'
+
+cimd:
+  enabled: true
+  allowed_redirect_uris:
+    - loopback
+    - '^cursor://'
+
+oauth_providers: file:${OAUTH_CONFIG_FILE:-./configs/local-oauth-config.yml}
+mcp_servers: file:${MCP_CONFIG_FILE:-./configs/local-host-mcp-config.yml}

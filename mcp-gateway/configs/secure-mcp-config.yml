@@ -1,0 +1,28 @@
+# MCP backends for "secure" mode (Docker network hostnames).
+#
+# The artifactory server requires per-user OAuth: the gateway will not forward
+# a request until the user has logged in via Google and approved the consent
+# screen. This is the config used for the end-to-end auth + consent demo.
+#
+# Two levels of "secure":
+#
+# 1. Gateway OAuth only (this file as-is): the user must log in + consent at the
+#    gateway before any tool runs. The upstream data call still uses the shared
+#    JFrog token configured on the artifactory-mcp container. Works with only a
+#    Google OAuth client.
+#
+# 2. True per-user (uncomment forward_id_token below AND set
+#    ARTIFACTORY_OIDC_PROVIDER_NAME on the artifactory-mcp container): the
+#    gateway forwards the user's Google id_token, which the server exchanges for
+#    a user-scoped JFrog token. Requires a JFrog OIDC integration + identity
+#    mapping. JFrog then enforces each user's own permissions.
+
+artifactory:
+  name: artifactory
+  description: JFrog Artifactory MCP server (per-user OAuth)
+  endpoint: http://artifactory-mcp:8091/mcp
+  auth_provider: google
+  # True per-user JFrog RBAC: forward the user's Google id_token upstream so the
+  # artifactory-mcp server can exchange it for a user-scoped JFrog token via
+  # JFrog's OIDC token-exchange endpoint. No shared token is used.
+  forward_id_token: true

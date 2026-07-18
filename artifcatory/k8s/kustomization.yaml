@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: artifactory-mcp-server
+
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+
+# Common labels applied to all resources
+commonLabels:
+  app: artifactory-mcp-server
+  managed-by: kustomize
+
+# Images to patch (update this with your registry)
+images:
+  - name: artifactory-mcp-server
+    newName: your-registry/artifactory-mcp-server
+    newTag: latest
+
+# ConfigMap generator (optional - for non-sensitive config)
+# configMapGenerator:
+#   - name: artifactory-mcp-config
+#     literals:
+#       - HOST=0.0.0.0
+#       - PORT=8080
+

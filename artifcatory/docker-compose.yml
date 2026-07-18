@@ -1,0 +1,20 @@
+services:
+  artifactory-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: artifactory-mcp-server
+    ports:
+      - "8091:8091"
+    environment:
+      ARTIFACTORY_BASE_URL: ${ARTIFACTORY_BASE_URL:-http://host.docker.internal:8081/artifactory}
+      # Preferred: JFrog access/identity token (works with company + free-tier).
+      ARTIFACTORY_ACCESS_TOKEN: ${ARTIFACTORY_ACCESS_TOKEN:-}
+      # Legacy fallback for older self-hosted API keys only.
+      ARTIFACTORY_API_KEY: ${ARTIFACTORY_API_KEY:-}
+      HOST: 0.0.0.0
+      PORT: 8091
+      MCP_DISABLE_DNS_REBINDING: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

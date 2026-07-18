@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: artifactory-mcp-server
+  namespace: artifactory-mcp-server
+  labels:
+    app: artifactory-mcp-server
+    component: mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: artifactory-mcp-server
+  template:
+    metadata:
+      labels:
+        app: artifactory-mcp-server
+        component: mcp-server
+    spec:
+      containers:
+      - name: artifactory-mcp-server
+        # Image will be updated by Kustomize from Google Artifact Registry
+        # Format: us-docker.pkg.dev/PROJECT_ID/REPOSITORY/artifactory-mcp-server:TAG
+        image: artifactory-mcp-server:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        - name: HOST
+          value: "0.0.0.0"
+        - name: PORT
+          value: "8080"
+        # Load credentials from Kubernetes Secret
+        - name: ARTIFACTORY_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: artifactory-credentials
+              key: ARTIFACTORY_BASE_URL
+        - name: ARTIFACTORY_ACCESS_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: artifactory-credentials
+              key: ARTIFACTORY_ACCESS_TOKEN
+        
+        # Resource limits and requests
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        
+        # Liveness probe - TCP socket check since FastMCP doesn't have /health endpoint
+        livenessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        # Readiness probe - TCP socket check
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      
+      # Restart policy
+      restartPolicy: Always
+

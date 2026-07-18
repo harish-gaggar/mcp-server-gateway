@@ -1,0 +1,26 @@
+# Secrets and local-only files — never commit these
+**/.env
+**/.env.local
+**/.env.*.local
+**/credentials.json
+**/token.json
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+
+# Test coverage and local tooling
+coverage/
+.claude/
+
+# Local TLS certs (mkcert)
+**/certs/
+*.pem
+*.key
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

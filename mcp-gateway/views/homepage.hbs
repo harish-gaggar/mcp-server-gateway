@@ -1,0 +1,177 @@
+{{!--
+  MCP Gateway Homepage
+
+  Expected template context:
+    servers  {object[]}  - List of MCP servers
+      .namespace      {string}  - URL namespace (e.g. "github")
+      .name           {string}  - Human-readable server name
+      .description    {string}  - Server description
+      .authProvider   {string|null} - Auth provider name, or null if none
+      .canExchange    {boolean} - Whether token exchange is supported
+      .canRefresh     {boolean} - Whether refresh tokens are supported
+      .mcpUrl         {string}  - Full MCP endpoint URL
+      .claudeCommand  {string}  - "claude mcp add ..." command
+--}}
+
+<style>
+  @keyframes details-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  details[open] .details-body {
+    animation: details-fade-in 0.2s ease-out;
+  }
+
+  .tab-btn {
+    color: #6b7280; /* gray-500 */
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab-btn:hover {
+    color: #111827; /* gray-900 */
+  }
+  .tab-btn.active-tab {
+    color: #2563eb; /* blue-600 */
+    border-bottom-color: #2563eb;
+  }
+</style>
+
+<div class="mx-auto max-w-4xl px-4 py-12">
+
+  {{! Header }}
+  <div class="mb-10">
+    <h1 class="text-3xl font-bold text-gray-900">MCP Gateway <span class="text-gray-400">/ {{environment}}</span></h1>
+    <p class="mt-2 text-base text-gray-500">The following MCP servers are available through this gateway.</p>
+  </div>
+
+  {{#if servers}}
+    <div class="flex flex-col gap-6">
+      {{#each servers}}
+        <details class="group rounded-2xl bg-white shadow-sm ring-1 ring-gray-200">
+
+          {{! Summary: always-visible server name + description }}
+          <summary class="flex cursor-pointer list-none items-start justify-between gap-4 px-8 py-6 marker:hidden">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900">{{name}}</h2>
+              <p class="mt-1 text-sm text-gray-500">{{description}}</p>
+              <p class="mt-2 font-mono text-xs text-gray-400">{{mcpUrl}}</p>
+            </div>
+            {{! Chevron rotates when open }}
+            <svg class="mt-1 h-5 w-5 shrink-0 text-gray-400 transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </summary>
+
+          <div class="details-body">
+          {{! Auth provider details }}
+          <div class="border-t border-gray-100 px-8 py-5">
+            <p class="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">Auth Provider</p>
+            {{#if authProvider}}
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 ring-1 ring-inset ring-blue-200">
+                  {{authProvider}}
+                </span>
+                {{#if canExchange}}
+                  <span class="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-200">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
+                    </svg>
+                    Token Exchange
+                  </span>
+                {{else}}
+                  <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-500 ring-1 ring-inset ring-gray-200">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Token Exchange
+                  </span>
+                {{/if}}
+                {{#if canRefresh}}
+                  <span class="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-sm font-medium text-green-700 ring-1 ring-inset ring-green-200">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
+                    </svg>
+                    Refresh Tokens
+                  </span>
+                {{else}}
+                  <span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-500 ring-1 ring-inset ring-gray-200">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Refresh Tokens
+                  </span>
+                {{/if}}
+              </div>
+            {{else}}
+              <span class="text-sm text-gray-400">None</span>
+            {{/if}}
+          </div>
+
+          {{! Setup instructions }}
+          <div class="tabs border-t border-gray-100 px-8 py-6">
+            <p class="mb-4 text-xs font-medium uppercase tracking-wide text-gray-400">Setup Instructions</p>
+
+            {{! Tab bar }}
+            <div class="mb-4 flex gap-1 border-b border-gray-200">
+              <button type="button" class="tab-btn active-tab px-4 py-2 text-sm font-medium" data-tab="claude-code">Claude Code</button>
+              <button type="button" class="tab-btn px-4 py-2 text-sm font-medium" data-tab="vscode">VS Code / Copilot</button>
+              <button type="button" class="tab-btn px-4 py-2 text-sm font-medium" data-tab="cursor">Cursor</button>
+            </div>
+
+            {{! Tab panels }}
+            <div class="tab-panel" data-panel="claude-code">
+              {{> code-block text=claudeCommand}}
+            </div>
+            <div class="tab-panel hidden" data-panel="vscode">
+              {{> code-block text=vscodeCommand}}
+            </div>
+            <div class="tab-panel hidden" data-panel="cursor">
+              <a href="{{cursorDeeplink}}">
+                <img src="https://cursor.com/deeplink/mcp-install-dark.png" alt="Add to Cursor" class="h-10" />
+              </a>
+            </div>
+
+          </div>
+          </div>{{! end details-body }}
+
+        </details>
+      {{/each}}
+    </div>
+  {{else}}
+    <div class="rounded-2xl bg-white px-8 py-12 text-center shadow-sm ring-1 ring-gray-200">
+      <p class="text-sm text-gray-400">No MCP servers are configured.</p>
+    </div>
+  {{/if}}
+
+</div>
+
+<script>
+  function copyCode(btn) {
+    navigator.clipboard.writeText(btn.dataset.text).then(() => {
+      const copy = btn.querySelector('.icon-copy')
+      const check = btn.querySelector('.icon-check')
+      copy.classList.add('hidden')
+      check.classList.remove('hidden')
+      setTimeout(() => {
+        copy.classList.remove('hidden')
+        check.classList.add('hidden')
+      }, 2000)
+    })
+  }
+
+  // Tab switching — single delegated listener on the document
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tab-btn')
+    if (!btn) return
+
+    const tabs = btn.closest('.tabs')
+    const targetPanel = btn.dataset.tab
+
+    tabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'))
+    btn.classList.add('active-tab')
+
+    tabs.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('hidden', panel.dataset.panel !== targetPanel)
+    })
+  })
+</script>

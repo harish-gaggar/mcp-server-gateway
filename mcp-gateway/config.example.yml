@@ -1,0 +1,246 @@
+# MCP Gateway Sample Configuration
+#
+# NOTE: Environment variables can be referenced with standard ${ENV_VAR} syntax.
+# Variables will be evaluated prior to the YAML file being parsed.
+
+# URL the gateway will be accessed from, used when generating OAuth endpoints for
+# authorization server metadata, as well as when building URLs to be used internally
+base_url: https://mcp-gateway.example.com
+
+# port to listen on, defaults to 3000
+port: 3000
+
+# host to listen on. In k8s, this should be 0.0.0.0 for "all hosts"
+host: localhost
+
+# whether or not to enable subdomain-based server namespacing in addition to the default subpath
+# i.e. a "github" mcp server would be available on github.<mcp gateway>/mcp as well as
+# <mcp gateway>/github/mcp.
+enable_subdomains: true
+
+# CORS configuration (allows requests to be made from browser-based MCP clients)
+cors:
+  enabled: true
+  # use '*' to allow all origins, or optionally provide a regex or list of regexes
+  # that will be used to validate CORS origins
+  allowed_origins: '*'
+
+# can also be set with the LOG_LEVEL environment variable, defaults to 'info'
+log_level: info
+
+# level to log http request/response metadata at, or `off` to disable. Defaults to 'off'
+http_log_level: debug
+
+# Redis configuration.
+redis:
+  host: 127.0.0.1
+  port: 6379 # defaults to 6379
+  # password: ${REDIS_AUTH_PASSWORD}
+  # tls_ca: ${REDIS_TLS_CA_CERT}
+
+# Configuration for JWE Token Encryption
+token:
+  # defaults to "urn:mcp-gateway:tokens", can probably leave as default unless
+  # there's a specific value needed
+  # issuer: JWE_ISSUER_VALUE
+
+  # symmetric key used to encrypt/decrypt JWE tokens. Must be base64-encoded and
+  # at least 32 bytes long
+  #
+  # supports a single value, or a list of object with id/key fields to support
+  # key rotation
+  encryption_key: ${JWE_ENCRYPTION_KEY}
+
+  # TTL values can be any string value supported by the `ms` library: https://npmjs.com/package/ms
+
+  # how long encrypted state values will be valid for
+  state_ttl: '15m'
+  # how long auth codes will be valid for
+  auth_code_ttl: '5m'
+  # how long access tokens will be valid for by default (note: wrapped access token
+  # expire time will override this)
+  access_token_ttl: '1h'
+
+# Configuration for OAuth Dynamic Client Registration
+dcr:
+  # if disabled, dynamic client registration will not be allowed
+  enabled: true
+  # single regex or list of regexes to allow as redirect uris, in case restricting
+  # dynamic client redirect paths is desired. Additionally, the constant "loopback"
+  # value can be supplied to use a regex that matches all types of localhost addresses
+  allowed_redirect_uris: '^http://localhost:[0-9]+/'
+  # how long client registrations will be kept for
+  client_ttl: '1w' # defaults to one week
+  # if set to true (the default) the client TTL will be refreshed each time it's
+  # used to retrieve a token, effectively allowing indefinite client registration
+  # as long as it's continually used
+  refresh_ttl_on_use: true
+
+# Configuration for Google ID Token client authentication
+# When enabled, clients can authenticate using a Google ID token as the client secret.
+# The client_id must be the literal string "google-id-token".
+# This is designed exclusively for the token exchange grant type.
+google_token_clients:
+  # if disabled, Google ID token client authentication will not be allowed
+  enabled: true
+  # optional list of hosted domains (hd claim) to allow for user ID tokens
+  # if omitted, all Google user accounts are accepted
+  # allowed_hd:
+  #   - example.com
+  # optional allowlist of service account emails
+  # if omitted, all service accounts are accepted
+  # allowed_service_accounts:
+  #   - my-sa@my-project.iam.gserviceaccount.com
+  # if true, service account tokens must include an audience claim matching the
+  # gateway's base_url origin (e.g. https://mcp-gateway.example.com)
+  require_audience: false
+
+# Configuration for OAuth Client ID Metadata Document handling
+cimd:
+  # if enabled, clients will be able to pass in the metadata URI as the client id
+  enabled: true
+  # same as the dcr config, regex or regex list controlling allowed redirect uris
+  allowed_redirect_uris: 'loopback'
+  # regex or regex list indicating allowed metadata uris
+  # NOTE: is it highly recommended to configure this to avoid the passing of client
+  # IDs that would cause the gateway to make requests to potentially nefarious endpoints
+  allowed_metadata_uris:
+    - '^https://vscode\.dev/'
+  # Default/Maximum amount of time the metadata document should be cached for.
+  # If the metadata endpoint returns a Cache-Control header, that will be used
+  # if it is less than this value. If no cache-control header is present, this
+  # value will be used as the TTL
+  max_cache_ttl: '1d'
+  # as noted in the CIMD spec: https://www.ietf.org/archive/id/draft-ietf-oauth-client-id-metadata-document-00.html#section-6
+  # servers can enforce that the redirect_uris in the client id document be the
+  # same origin as the metadata document itself. This is enabled by default,
+  # though localhost urls are allowed as redirect_uris in addition to same origin
+  # uris.
+  enforce_same_origin_uri: true
+
+# OAuth Provider Configuration
+#
+# NOTE: this can be specified inline, or via a separate yaml file if desired
+# oauth_providers: file:./oauth-providers.yml
+
+oauth_providers:
+  # example OIDC-compliant provider
+  google:
+    oidc: true
+    # issuer will be used to dynamically discover the auth server metadata following
+    # the OpenID Configuration specification
+    issuer: https://accounts.google.com
+    client_id: ${GOOGLE_OAUTH_CLIENT_ID}
+    client_secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
+    # scope supports a single space-separated value, or a list of values
+    scope: openid https://www.googleapis.com/auth/userinfo.email
+    # any extra parameters that need to be passed to the authorize request
+    extra_params:
+      access_type: offline
+      prompt: consent
+    # claim in the oidc id token (or returned from the userinfo endpoint)
+    # that will be used in various metrics to uniquely identify a user. Defaults
+    # to the 'sub' claim if not set
+    user_id_claim: email
+    # If true, allows clients to "bring their own tokens" for use with the MCP
+    # servers via the OAuth Token Exchange grant type.
+    allow_token_exchange: true
+
+  # example: Okta public app using the Authorization Code + PKCE flow.
+  # Public apps in Okta are not issued a client_secret, so it is omitted here.
+  okta-public:
+    oidc: true
+    issuer: https://your-org.okta.com/oauth2/default
+    client_id: ${okta_client_id}
+
+  # example non-oidc provider (GitHub Enterprise Server)
+  github:
+    oidc: false
+    issuer: 'https://github.example.com'
+    scope: 'repo read:user'
+    # auth and token urls have to be specified manually without an automatic
+    # metadata discovery endpoint to hit
+    auth_url: 'https://github.example.com/login/oauth/authorize'
+    token_url: 'https://github.example.com/login/oauth/access_token'
+    # whether or not this oauth provider supports refresh tokens.
+    supports_refresh: true
+    # if set, will be used to lookup a unique id for the user based on the returned
+    # access token
+    user_info:
+      # API endpoint that will be hit with the access token
+      url: 'https://github.example.com/api/v3/user'
+      # field in the response to use as the user id. Supports lodash 'get' syntax,
+      # so you can perform more complex field resolution with `.`, i.e. `some.nested.field`
+      user_id_field: 'login'
+
+# MCP Server Configuration
+#
+# Similar to the OAuth Provider configuration, this can be specified inline or
+# can be referenced via an external file:
+# mcp_servers: file:./mcp-servers.yml
+
+mcp_servers:
+  github:
+    # name of the mcp server
+    name: 'Github MCP Server'
+    # brief description of the mcp server
+    description: 'Provides MCP endpoints to access Github Enterprise content'
+    # MCP Server URL
+    endpoint: http://mcp-github-server.de-mcp-github-server.svc.cluster.local:80/mcp
+    # OAuth Provider used for this MCP server. If omitted, no auth will be required
+    # Value must correspond to one of the entries in the oauth_providers list
+    auth_provider: github
+    # if set, will override the list of scopes specified in the auth provider config
+    # scope: 'custom scope list'
+
+    # if set, will allow extra headers to be passed through from the mcp client
+    # to the upstream mcp server. Useful for scenarios where the auth provider
+    # is not OAuth and users will manually add auth headers to client configuration.
+    # NOTE: when auth_provider is set, the Authorization header is not allowed
+    # in this list.
+    # forwarded_headers:
+    #   - Authorization
+
+    # Per-server rate limiting configuration. When specified, overrides the global
+    # mcp limit defined in rate_limiting.mcp for this server only.
+    # Requires rate_limiting.enabled: true.
+    # rate_limit:
+    #   # Limit applied to all MCP requests for this server, regardless of tool.
+    #   # Key is user_id+namespace (or client_id+namespace if user_id is unavailable).
+    #   all:
+    #     window: '1m'
+    #     limit: 300
+    #     report_only: false  # if true, logs violations without blocking
+    #
+    #   # Per-tool limits for specific MCP tools (only applies to tools/call requests).
+    #   # Each key is the tool name as defined in the MCP server.
+    #   tools:
+    #     some-expensive-tool:
+    #       window: '1m'
+    #       limit: 10
+    #     another-tool:
+    #       window: '5m'
+    #       limit: 5
+
+# Rate limiting configuration.
+# When disabled (or absent), no rate limiting is applied.
+# rate_limiting:
+#   enabled: true
+#
+#   # Rate limit for the OAuth token exchange endpoint (POST /oauth/:namespace/token).
+#   # Only applies to the token_exchange grant type; auth_code and refresh_token grants
+#   # are skipped (they have JTI replay protection). CIMD clients are also skipped since
+#   # they share a single client_id across many users.
+#   # Key: client_id + namespace (from Basic auth header or request body).
+#   oauth:
+#     window: '15m'
+#     limit: 100
+#     report_only: false  # if true, logs violations without blocking
+#
+#   # Default rate limit applied to all MCP servers that don't define their own
+#   # rate_limit block. Can be overridden per-server via mcp_servers.<name>.rate_limit.all.
+#   # Key: user_id + namespace, falling back to client_id + namespace if user_id is null.
+#   mcp:
+#     window: '1m'
+#     limit: 300
+#     report_only: false  # if true, logs violations without blocking

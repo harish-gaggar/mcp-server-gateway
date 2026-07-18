@@ -1,0 +1,144 @@
+{
+  "uid": "mcp-gateway-overview",
+  "title": "MCP Gateway — Usage & Traces",
+  "tags": ["mcp", "gateway"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(mcp_client_operation_duration_milliseconds_count{user_id!=\"\"}, user_id)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total tool calls",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\", user_id=~\"$user\"})"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Distinct users",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by (user_id) (mcp_client_operation_duration_milliseconds_count{user_id!=\"\"}))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Distinct tools",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(count by (gen_ai_tool_name) (mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\"}))"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "JSON-RPC errors",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(mcp_client_operation_duration_milliseconds_count{error_type!=\"\"})"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Tool calls / sec by tool",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{gen_ai_tool_name}}",
+          "expr": "sum by (gen_ai_tool_name) (rate(mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\", user_id=~\"$user\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "p95 latency (ms) by tool",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "fieldConfig": { "defaults": { "unit": "ms" } },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{gen_ai_tool_name}}",
+          "expr": "histogram_quantile(0.95, sum by (le, gen_ai_tool_name) (rate(mcp_client_operation_duration_milliseconds_bucket{gen_ai_tool_name!=\"\", user_id=~\"$user\"}[$__rate_interval])))"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Calls by user / server / tool / provider",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (user_id, gateway_mcp_server_name, gen_ai_tool_name, gateway_oauth_provider) (mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\", user_id=~\"$user\"})"
+        }
+      ],
+      "transformations": [
+        { "id": "labelsToFields", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true } } }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Recent traces (Tempo)",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"mcp-gateway\" }",
+          "tableType": "traces",
+          "limit": 50
+        }
+      ]
+    }
+  ]
+}

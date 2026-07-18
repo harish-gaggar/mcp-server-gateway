@@ -1,0 +1,260 @@
+version: 2.1
+
+# Orbs for easier integration
+orbs:
+  gcp-cli: circleci/gcp-cli@3.1.0
+  docker: circleci/docker@2.2.0
+
+# Workflow parameters
+parameters:
+  registry:
+    type: string
+    default: "us-docker.pkg.dev"
+  project_id:
+    type: string
+    default: "your-gcp-project-id"
+  repository:
+    type: string
+    default: "your-artifact-registry-repo"
+  image_name:
+    type: string
+    default: "artifactory-mcp-server"
+
+# Reusable commands
+commands:
+  setup-gcp-auth:
+    description: "Authenticate with Google Cloud"
+    steps:
+      - gcp-cli/setup:
+          version: latest
+      - run:
+          name: Authenticate Docker with Google Artifact Registry
+          command: |
+            echo $GCP_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
+            gcloud auth configure-docker << pipeline.parameters.registry >>
+
+  generate-image-tag:
+    description: "Generate unique image tag"
+    steps:
+      - run:
+          name: Generate image tag
+          command: |
+            IMAGE_TAG="${CIRCLE_SHA1:0:7}-${CIRCLE_BUILD_NUM}"
+            echo "export IMAGE_TAG=${IMAGE_TAG}" >> $BASH_ENV
+            echo "export FULL_IMAGE=<< pipeline.parameters.registry >>/<< pipeline.parameters.project_id >>/<< pipeline.parameters.repository >>/<< pipeline.parameters.image_name >>:${IMAGE_TAG}" >> $BASH_ENV
+            echo "Image tag: ${IMAGE_TAG}"
+
+# Jobs definition
+jobs:
+  build-and-push:
+    docker:
+      - image: cimg/base:stable
+    resource_class: medium
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+          version: 20.10.24
+      
+      - setup-gcp-auth
+      - generate-image-tag
+      
+      - run:
+          name: Build Docker image
+          command: |
+            docker build \
+              -t ${FULL_IMAGE} \
+              -t << pipeline.parameters.registry >>/<< pipeline.parameters.project_id >>/<< pipeline.parameters.repository >>/<< pipeline.parameters.image_name >>:latest \
+              --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+              --build-arg VCS_REF=${CIRCLE_SHA1} \
+              --build-arg VERSION=${IMAGE_TAG} \
+              .
+      
+      - run:
+          name: Push Docker image to Google Artifact Registry
+          command: |
+            docker push ${FULL_IMAGE}
+            docker push << pipeline.parameters.registry >>/<< pipeline.parameters.project_id >>/<< pipeline.parameters.repository >>/<< pipeline.parameters.image_name >>:latest
+      
+      - run:
+          name: Save image tag for next job
+          command: |
+            mkdir -p /tmp/workspace
+            echo ${IMAGE_TAG} > /tmp/workspace/image_tag.txt
+            echo ${FULL_IMAGE} > /tmp/workspace/full_image.txt
+      
+      - persist_to_workspace:
+          root: /tmp/workspace
+          paths:
+            - image_tag.txt
+            - full_image.txt
+
+  update-manifests:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      
+      - run:
+          name: Read image tag from workspace
+          command: |
+            export IMAGE_TAG=$(cat /tmp/workspace/image_tag.txt)
+            export FULL_IMAGE=$(cat /tmp/workspace/full_image.txt)
+            echo "Image tag: ${IMAGE_TAG}"
+            echo "Full image: ${FULL_IMAGE}"
+            echo "export IMAGE_TAG=${IMAGE_TAG}" >> $BASH_ENV
+      
+      - run:
+          name: Update Kustomization with new image
+          command: |
+            IMAGE_TAG=$(cat /tmp/workspace/image_tag.txt)
+            cd k8s
+            cat <<EOF > kustomization.yaml
+            apiVersion: kustomize.config.k8s.io/v1beta1
+            kind: Kustomization
+            
+            namespace: artifactory-mcp-server
+            
+            resources:
+              - namespace.yaml
+              - deployment.yaml
+              - service.yaml
+            
+            commonLabels:
+              app: artifactory-mcp-server
+              managed-by: kustomize
+            
+            images:
+              - name: artifactory-mcp-server
+                newName: << pipeline.parameters.registry >>/<< pipeline.parameters.project_id >>/<< pipeline.parameters.repository >>/<< pipeline.parameters.image_name >>
+                newTag: ${IMAGE_TAG}
+            EOF
+            cat kustomization.yaml
+      
+      - run:
+          name: Commit and push updated manifests
+          command: |
+            IMAGE_TAG=$(cat /tmp/workspace/image_tag.txt)
+            git config user.email "circleci@circleci.com"
+            git config user.name "CircleCI Bot"
+            git add k8s/kustomization.yaml
+            git commit -m "🚀 Update image to ${IMAGE_TAG}
+
+            Image: << pipeline.parameters.registry >>/<< pipeline.parameters.project_id >>/<< pipeline.parameters.repository >>/<< pipeline.parameters.image_name >>:${IMAGE_TAG}
+            Commit: ${CIRCLE_SHA1}
+            Build: ${CIRCLE_BUILD_NUM}
+            Triggered by: ${CIRCLE_USERNAME}" || echo "No changes to commit"
+            
+            # Push using SSH (requires SSH key configured in CircleCI)
+            git push origin ${CIRCLE_BRANCH}
+
+  deploy-to-gke:
+    docker:
+      - image: google/cloud-sdk:alpine
+    steps:
+      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
+      
+      - run:
+          name: Setup GCP authentication
+          command: |
+            echo $GCP_SERVICE_KEY | gcloud auth activate-service-account --key-file=-
+            gcloud config set project << pipeline.parameters.project_id >>
+      
+      - run:
+          name: Install kubectl
+          command: |
+            gcloud components install kubectl --quiet
+      
+      - run:
+          name: Get GKE credentials
+          command: |
+            gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} \
+              --region ${GKE_REGION} \
+              --project << pipeline.parameters.project_id >>
+      
+      - run:
+          name: Install Flux CLI
+          command: |
+            apk add --no-cache curl bash
+            curl -s https://fluxcd.io/install.sh | bash
+            export PATH=$PATH:/root/.flux/bin
+            flux --version
+      
+      - run:
+          name: Trigger Flux reconciliation
+          command: |
+            export PATH=$PATH:/root/.flux/bin
+            flux reconcile source git flux-system --with-source || echo "Flux source reconciled"
+            flux reconcile kustomization artifactory-mcp-server --with-source || echo "Kustomization reconciled"
+      
+      - run:
+          name: Wait for deployment rollout
+          command: |
+            kubectl rollout status deployment/artifactory-mcp-server \
+              -n artifactory-mcp-server \
+              --timeout=5m
+      
+      - run:
+          name: Verify deployment
+          command: |
+            IMAGE_TAG=$(cat /tmp/workspace/image_tag.txt)
+            echo "✅ Deployment successful!"
+            echo ""
+            echo "Deployed Image: << pipeline.parameters.registry >>/<< pipeline.parameters.project_id >>/<< pipeline.parameters.repository >>/<< pipeline.parameters.image_name >>:${IMAGE_TAG}"
+            echo ""
+            echo "Pod Status:"
+            kubectl get pods -n artifactory-mcp-server -l app=artifactory-mcp-server
+            echo ""
+            echo "Service:"
+            kubectl get svc artifactory-mcp-server -n artifactory-mcp-server
+
+# Workflows
+workflows:
+  version: 2
+  
+  # Main workflow - runs on every push to main
+  build-deploy:
+    jobs:
+      - build-and-push:
+          context:
+            - gcp-production  # CircleCI context with GCP credentials
+          filters:
+            branches:
+              only:
+                - main
+      
+      - update-manifests:
+          requires:
+            - build-and-push
+          context:
+            - gcp-production
+          filters:
+            branches:
+              only:
+                - main
+      
+      - deploy-to-gke:
+          requires:
+            - update-manifests
+          context:
+            - gcp-production
+          filters:
+            branches:
+              only:
+                - main
+  
+  # PR workflow - only build and test
+  pr-check:
+    jobs:
+      - build-and-push:
+          context:
+            - gcp-production
+          filters:
+            branches:
+              ignore:
+                - main
+

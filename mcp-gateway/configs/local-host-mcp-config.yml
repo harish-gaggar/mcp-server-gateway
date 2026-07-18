@@ -1,0 +1,4 @@
+artifactory:
+  name: artifactory
+  description: JFrog Artifactory MCP server (Docker on localhost)
+  endpoint: http://localhost:8091/mcp

@@ -1,0 +1,122 @@
+{{!--
+  OAuth Consent Screen
+
+  Expected template context:
+    mcp_name        {string}   - Name of the MCP Server (e.g. "My MCP Server")
+    provider_name   {string}   - Provider name (e.g. "GitHub")
+    scopes          {string}   - Requested Scopes
+    client          {object}   - ClientRegistrationRequest fields (all optional except)
+      .client_name  {string}   - Human-readable application name
+      .client_uri   {string}   - Application homepage URL
+      .logo_uri     {string}   - Application logo URL
+      .tos_uri      {string}   - Terms of service URL
+      .policy_uri   {string}   - Privacy policy URL
+    hiddenInputs    {object[]} - Array of { name, value } pairs forwarded as hidden form fields
+                                 (used to pass through GET query params to the POST handler)
+    redirect_uri    {string}   - The redirect URI that the user will be sent to after consenting
+--}}
+
+<div class="flex min-h-screen flex-col items-center justify-center px-4 py-12">
+  <div class="w-full max-w-md rounded-2xl bg-white shadow-lg ring-1 ring-gray-200">
+
+    {{! Client identity header }}
+    <div class="flex flex-col items-center gap-3 border-b border-gray-100 px-8 py-8">
+      {{#if client.logo_uri}}
+        <img
+          src="{{client.logo_uri}}"
+          alt="{{#if client.client_name}}{{client.client_name}} logo{{else}}Application logo{{/if}}"
+          class="h-16 w-16 rounded-xl object-contain"
+        />
+      {{/if}}
+
+      <div class="text-center">
+        {{#if client.client_uri}}
+          <a
+            href="{{client.client_uri}}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-xl font-semibold text-gray-900 hover:underline"
+          >
+            {{#if client.client_name}}{{client.client_name}}{{else}}An application{{/if}}
+          </a>
+        {{else}}
+          <p class="text-xl font-semibold text-gray-900">
+            {{#if client.client_name}}{{client.client_name}}{{else}}An application{{/if}}
+          </p>
+        {{/if}}
+        <p class="mt-1 text-sm text-gray-500">is requesting access to your {{provider_name}} account in order to use the {{mcp_name}} MCP Server</p>
+      </div>
+    </div>
+
+    {{! Requested scopes }}
+    {{#if scopes}}
+      <div class="border-b border-gray-100 px-8 py-6">
+        <p class="mb-3 text-sm font-medium text-gray-700">This application is requesting the following scopes:</p>
+        <ul class="space-y-2">
+          {{#each (splitScope scopes)}}
+            <li class="flex items-start gap-2">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
+              </svg>
+              <span class="text-sm text-gray-700">{{this}}</span>
+            </li>
+          {{/each}}
+        </ul>
+      </div>
+    {{/if}}
+
+    {{! Legal links (tos / policy) }}
+    {{#if (or client.tos_uri client.policy_uri)}}
+      <div class="border-b border-gray-100 px-8 py-5">
+        <p class="text-xs text-gray-500">
+          By authorizing, you agree to this application's
+          {{#if client.tos_uri}}
+            <a href="{{client.tos_uri}}" target="_blank" rel="noopener noreferrer" class="font-medium text-blue-600 hover:underline">Terms of Service</a>
+          {{/if}}
+          {{#if (and client.tos_uri client.policy_uri)}}
+            and
+          {{/if}}
+          {{#if client.policy_uri}}
+            <a href="{{client.policy_uri}}" target="_blank" rel="noopener noreferrer" class="font-medium text-blue-600 hover:underline">Privacy Policy</a>
+          {{/if}}.
+        </p>
+      </div>
+    {{/if}}
+
+    {{! Consent form }}
+    <form method="POST" class="px-8 py-6">
+      {{! Forward any GET query params that need to be included in the POST }}
+      {{#each hiddenInputs}}
+        <input type="hidden" name="{{this.name}}" value="{{this.value}}" />
+      {{/each}}
+
+      <div class="flex flex-col gap-3">
+        <button
+          type="submit"
+          name="consent"
+          value="approved"
+          class="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        >
+          Authorize
+        </button>
+        <button
+          type="submit"
+          name="consent"
+          value="denied"
+          class="w-full rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+        >
+          Deny
+        </button>
+      </div>
+    </form>
+
+    {{! Redirect URI footnote }}
+    <div class="rounded-b-2xl bg-gray-50 px-8 py-4">
+      <p class="text-xs text-gray-400">
+        After authorization you will be redirected to:
+        <span class="font-mono">{{redirect_uri}}</span>
+      </p>
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  github-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github-enterprise-mcp-server
+    ports:
+      - "8080:8080"  # MCP Server HTTP endpoint
+    environment:
+      - GITHUB_ENTERPRISE_URL=${GITHUB_ENTERPRISE_URL:-https://github.example.com}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - PORT=8080
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+networks:
+  mcp-network:
+    driver: bridge
+
+
+
