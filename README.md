@@ -7,6 +7,11 @@ A local, book-ready reference stack for running **MCP Gateway** with two OAuth-p
 | [Artifactory MCP](artifcatory/) | `/artifactory/mcp` | Google | JFrog Artifactory tools (repos, artifacts, search) |
 | [GitHub MCP](github/) | `/github/mcp` | GitHub | GitHub API tools (repos, issues, PRs, search) |
 
+There is also an optional **[JFrog AI Agent (Command Center)](Agents/jfrog-agent/)** — a
+LangGraph + Streamlit app that talks to the Artifactory MCP server *through* this
+gateway (per-user OAuth), with durable memory and LLM usage/evaluation tracking.
+Set the gateway up first, then see [Agents/jfrog-agent/README.md](Agents/jfrog-agent/README.md).
+
 The gateway sits in front of both servers. Every tool call requires the user to **sign in via OAuth** and approve a **gateway consent screen**. No shared tokens are checked into the repo.
 
 ```
@@ -58,6 +63,8 @@ mcp-server-gateway/
 ├── mcp-gateway/          # Gateway + docker compose + Cursor wrappers
 ├── artifcatory/          # Python Artifactory MCP server
 ├── github/               # TypeScript GitHub MCP server
+├── Agents/
+│   └── jfrog-agent/      # Optional LangGraph + Streamlit JFrog AI agent
 └── README.md             # ← you are here
 ```
 
@@ -310,6 +317,28 @@ An OpenTelemetry + Grafana stack lives under `mcp-gateway/monitoring/`. To enabl
    docker compose up -d
    ```
 3. Open Grafana at `http://localhost:3000`.
+
+The *MCP Gateway* dashboard includes a **Client type** view that separates
+autonomous agent traffic (e.g. the JFrog agent below) from interactive coding
+assistants like Cursor.
+
+---
+
+## Step 9 — (Optional) JFrog AI Agent (Command Center)
+
+Once the gateway is running (Step 7 works), you can run the LangGraph + Streamlit
+**JFrog agent** that queries Artifactory through the gateway with per-user OAuth,
+plus durable conversation memory and LLM usage/evaluation tracking.
+
+```bash
+cd Agents/jfrog-agent
+cp .env.example .env          # then set OPENAI_API_KEY (or use the offline planner)
+docker compose up --build     # UI at http://localhost:8501
+```
+
+Full instructions (local run, memory backends incl. the Spanner emulator, and the
+`scripts/verify_memory.py` check) are in
+[Agents/jfrog-agent/README.md](Agents/jfrog-agent/README.md).
 
 ---
 

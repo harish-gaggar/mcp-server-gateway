@@ -1,0 +1,28 @@
+# Core LangGraph / LangChain
+langgraph>=0.2.60
+langchain-core>=0.3.30
+
+# LLM providers (optional at runtime; the agent falls back to a deterministic
+# heuristic planner when no provider/API key is configured)
+langchain-openai>=0.2.14
+langchain-anthropic>=0.3.0
+
+# MCP-through-gateway client + OAuth
+httpx>=0.27.0
+
+# Config + CLI
+python-dotenv>=1.0.1
+rich>=13.7.0
+
+# Web UI
+streamlit>=1.39.0
+
+# Durable agent memory (threads + LangGraph checkpoints) and LLM telemetry.
+# sqlite backend (default) uses langgraph-checkpoint-sqlite; spanner backend
+# (optional, works with the local emulator) uses google-cloud-spanner.
+langgraph-checkpoint-sqlite>=2.0.0
+google-cloud-spanner>=3.47.0
+
+# Observability (optional; enabled when JFROG_AGENT_OTEL_ENDPOINT is set)
+opentelemetry-sdk>=1.27.0
+opentelemetry-exporter-otlp-proto-http>=1.27.0

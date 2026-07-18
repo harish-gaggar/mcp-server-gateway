@@ -213,6 +213,17 @@ export class McpServer {
       'gateway.upstream_endpoint': this.#config.endpoint,
     }
 
+    // Distinguish autonomous agents (e.g. the LangGraph JFrog agent) from
+    // interactive coding assistants (Cursor, Claude, etc.). Callers set the
+    // `x-mcp-client-type` header (e.g. "agent" or "coding-assistant"); we record
+    // it on the span/metric so dashboards can attribute traffic per client class.
+    // The optional `x-mcp-client-id` header carries a stable caller identifier
+    // (e.g. the agent run id) for finer-grained auditing.
+    const clientType = request.headers.get('x-mcp-client-type')
+    if (clientType) attrs['gateway.client_type'] = clientType
+    const clientId = request.headers.get('x-mcp-client-id')
+    if (clientId) attrs['gateway.client_instance_id'] = clientId
+
     if (this.requiresAuth) {
       // access token should be passed in by the mcp route, so if it's not
       // present here then there's a bug in the mcp route handler, not a failed

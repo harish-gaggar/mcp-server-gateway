@@ -18,6 +18,16 @@
         "includeAll": true,
         "multi": true,
         "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "client_type",
+        "label": "Client type",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(mcp_client_operation_duration_milliseconds_count{gateway_client_type!=\"\"}, gateway_client_type)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
       }
     ]
   },
@@ -138,6 +148,46 @@
           "tableType": "traces",
           "limit": 50
         }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Tool calls / sec by client type (agent vs coding assistant)",
+      "description": "Splits traffic using the gateway.client_type attribute set from the x-mcp-client-type request header. The JFrog LangGraph agent sends 'agent'; interactive tools that omit the header show as 'unset'.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{gateway_client_type}}",
+          "expr": "sum by (gateway_client_type) (rate(mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\", user_id=~\"$user\", gateway_client_type=~\"$client_type\"}[$__rate_interval]))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "unset",
+          "expr": "sum(rate(mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\", user_id=~\"$user\", gateway_client_type=\"\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Calls by user / client type / tool",
+      "description": "Attributes each tool call to a human (user_id) AND a client class (gateway.client_type). Lets you confirm whether a given user's requests came from the JFrog agent or a coding assistant.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "instant": true,
+          "expr": "sum by (user_id, gateway_client_type, gateway_mcp_server_name, gen_ai_tool_name) (mcp_client_operation_duration_milliseconds_count{gen_ai_tool_name!=\"\", user_id=~\"$user\"})"
+        }
+      ],
+      "transformations": [
+        { "id": "labelsToFields", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true } } }
       ]
     }
   ]

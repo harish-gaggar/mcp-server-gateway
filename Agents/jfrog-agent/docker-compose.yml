@@ -1,0 +1,56 @@
+services:
+  jfrog-copilot:
+    build: .
+    container_name: jfrog-copilot
+    ports:
+      - "8501:8501"   # Streamlit UI  -> http://localhost:8501
+      - "8777:8777"   # OAuth loopback callback (must match the redirect URI)
+    environment:
+      # Server-side calls from the container reach the gateway on the host.
+      JFROG_AGENT_GATEWAY_URL: "http://host.docker.internal:8090"
+      # The browser authorize link must use a host the USER's browser can open.
+      JFROG_AGENT_GATEWAY_PUBLIC_URL: "http://localhost:8090"
+      JFROG_AGENT_MCP_NAMESPACE: "artifactory"
+      JFROG_AGENT_CLIENT_TYPE: "agent"
+      JFROG_AGENT_CLIENT_NAME: "jfrog-langgraph-agent"
+      JFROG_AGENT_READ_ONLY: "true"
+      JFROG_AGENT_OAUTH_BIND_HOST: "0.0.0.0"
+      JFROG_AGENT_OAUTH_CALLBACK_PORT: "8777"
+      # LLM (optional). Falls back to the offline heuristic planner if unset.
+      JFROG_AGENT_LLM_PROVIDER: "${JFROG_AGENT_LLM_PROVIDER:-none}"
+      JFROG_AGENT_LLM_MODEL: "${JFROG_AGENT_LLM_MODEL:-gpt-4o-mini}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      # Durable agent memory: "sqlite" (default, in the /data volume) or "spanner".
+      JFROG_AGENT_MEMORY_BACKEND: "${JFROG_AGENT_MEMORY_BACKEND:-sqlite}"
+      JFROG_AGENT_MEMORY_DB: "/data/memory.db"
+      JFROG_AGENT_CHECKPOINTS_DB: "/data/checkpoints.db"
+      # When MEMORY_BACKEND=spanner the emulator service below is used (gRPC 9010).
+      SPANNER_EMULATOR_HOST: "${SPANNER_EMULATOR_HOST:-spanner-emulator:9010}"
+      JFROG_AGENT_SPANNER_PROJECT: "jfrog-agent-local"
+      JFROG_AGENT_SPANNER_INSTANCE: "jfrog-agent"
+      JFROG_AGENT_SPANNER_DATABASE: "agent-memory"
+      # Optional: export the agent's own traces to the gateway's collector.
+      # JFROG_AGENT_OTEL_ENDPOINT: "http://host.docker.internal:4318"
+    extra_hosts:
+      # Lets `host.docker.internal` resolve to the host on Linux (no-op on macOS).
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Persist the one-time OAuth token + audit trail + sqlite memory.
+      - jfrog-copilot-data:/data
+    depends_on:
+      - spanner-emulator
+    restart: unless-stopped
+
+  # Local Cloud Spanner emulator for durable agent memory (opt-in backend).
+  # Data is in-memory and resets when this container restarts.
+  spanner-emulator:
+    image: gcr.io/cloud-spanner-emulator/emulator:latest
+    container_name: jfrog-spanner-emulator
+    ports:
+      - "9110:9010"   # gRPC   (host 9110 avoids a macOS conflict on 9010)
+      - "9120:9020"   # REST
+    restart: unless-stopped
+
+volumes:
+  jfrog-copilot-data:

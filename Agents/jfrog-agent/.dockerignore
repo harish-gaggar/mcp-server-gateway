@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+_audit_test/
+.jfrog-agent/
+.git/
+README.md
