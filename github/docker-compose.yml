@@ -1,0 +1,19 @@
+services:
+  github-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: github-mcp-server
+    environment:
+      GITHUB_API_URL: https://api.github.com
+      GITHUB_SECURE_MODE: "true"
+      # Optional: comma-separated GitHub logins allowed after OAuth (empty = any authorizer)
+      GITHUB_ALLOWED_USERS: ${GITHUB_ALLOWED_USERS:-}
+      PORT: 8080
+    # No host port — reachable only on the Docker network via the MCP gateway.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

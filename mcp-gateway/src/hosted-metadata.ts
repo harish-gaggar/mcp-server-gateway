@@ -18,7 +18,8 @@ const hostedClientMetadata: Record<string, ClientRegistrationRequest> = {
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
     client_name: 'Virtual MCP Server',
-    client_uri: 'https://github.com/example/virtual-mcp-server',
+    client_uri:
+      'https://code.corp.creditkarma.com/ck-private/de_virtual-mcp-server/',
   },
   'remote-mcp-proxy': {
     application_type: 'native',
@@ -31,8 +32,9 @@ const hostedClientMetadata: Record<string, ClientRegistrationRequest> = {
     token_endpoint_auth_method: 'none',
     grant_types: ['authorization_code', 'refresh_token'],
     response_types: ['code'],
-    client_name: 'Remote MCP Proxy',
-    client_uri: 'https://github.com/example/remote-mcp-proxy',
+    client_name: 'CK Remote MCP Proxy',
+    client_uri:
+      'https://code.corp.creditkarma.com/ck-private/de_remote-mcp-proxy/',
   },
   // client metadata used when running mcp auth locally that normally uses the
   // google-id-token exchange flow in production. This allows consumers to test

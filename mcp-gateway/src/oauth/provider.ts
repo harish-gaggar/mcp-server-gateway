@@ -36,6 +36,9 @@ const TokenExchangeSchema = withEnabled(
 const BaseOauthSchema = z.object({
   client_id: z.string().nonempty(),
   client_secret: z.string().nonempty().optional(),
+  // When false, omit PKCE params on the upstream authorize + token exchange
+  // (GitHub OAuth apps support the classic flow; PKCE is optional).
+  pkce: z.boolean().default(true),
   // note: for manual oauth implementations this is not necessarily the issuer url
   // but it is used as the base url for discovery in oidc implementations,
   // so we require it for all providers for consistency
@@ -170,10 +173,33 @@ export class Provider {
   }
 
   buildAuthUrl(state: string, code_challenge: string, scopes?: string[]) {
+    const scope = (scopes ?? this.#config.scope).join(' ')
+
+    if (!this.#config.pkce) {
+      const endpoint =
+        this.#clientConfig.serverMetadata().authorization_endpoint
+      if (!endpoint) {
+        throw new Error('authorization_endpoint missing from provider metadata')
+      }
+
+      const url = new URL(endpoint)
+      // Put client_id first: long encrypted state values can push it off the
+      // end of the URL and GitHub returns 404 when client_id is missing.
+      url.searchParams.set('client_id', this.#config.client_id)
+      url.searchParams.set('response_type', 'code')
+      url.searchParams.set('redirect_uri', this.#redirectUri.toString())
+      url.searchParams.set('scope', scope)
+      url.searchParams.set('state', state)
+      for (const [k, v] of Object.entries(this.#config.extra_params ?? {})) {
+        url.searchParams.set(k, v)
+      }
+      return url
+    }
+
     return client.buildAuthorizationUrl(this.#clientConfig, {
       state,
       redirect_uri: this.#redirectUri.toString(),
-      scope: (scopes ?? this.#config.scope).join(' '),
+      scope,
       code_challenge,
       code_challenge_method: 'S256',
       ...this.#config.extra_params,
@@ -195,7 +221,7 @@ export class Provider {
       const result = await client.authorizationCodeGrant(
         this.#clientConfig,
         currentUrl,
-        { pkceCodeVerifier: req.code_verifier }
+        this.#config.pkce ? { pkceCodeVerifier: req.code_verifier } : {}
       )
 
       return {
@@ -290,9 +316,30 @@ export class Provider {
     }
   }
 
+  async #fetchWithRetry(url: string, init: RequestInit, attempts = 2) {
+    let lastError: unknown
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fetch(url, {
+          ...init,
+          signal: AbortSignal.timeout(30_000),
+        })
+      } catch (error) {
+        lastError = error
+        const code = (error as { cause?: { code?: string } }).cause?.code
+        if (i + 1 < attempts && code === 'UND_ERR_CONNECT_TIMEOUT') {
+          logger.warn({ url, attempt: i + 1 }, 'fetch timed out; retrying')
+          continue
+        }
+        throw error
+      }
+    }
+    throw lastError
+  }
+
   async #getUserIdFromUserInfo(token: string, userInfo: OauthUserInfo) {
     try {
-      const resp = await fetch(userInfo.url, {
+      const resp = await this.#fetchWithRetry(userInfo.url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}` },
       })

@@ -40,6 +40,24 @@ services:
       retries: 5
       start_period: 10s
 
+  github-mcp:
+    build:
+      context: ../github
+      dockerfile: Dockerfile
+    container_name: github-mcp-server
+    environment:
+      GITHUB_API_URL: https://api.github.com
+      GITHUB_SECURE_MODE: "true"
+      GITHUB_ALLOWED_USERS: ${GITHUB_ALLOWED_USERS:-}
+      PORT: 8080
+    # Internal only — clients must go through the OAuth-protected gateway.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
   gateway:
     build:
       context: .
@@ -63,6 +81,8 @@ services:
       # Google OAuth client (only needed in secure mode)
       GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
       GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
       # OpenTelemetry: when set (e.g. http://otel-collector:4318), the gateway
       # exports traces + metrics to that OTLP collector instead of the console.
       # Bring up the stack in ./monitoring to populate Grafana. Leave empty to
@@ -72,6 +92,8 @@ services:
       redis:
         condition: service_healthy
       artifactory-mcp:
+        condition: service_healthy
+      github-mcp:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8090/health"]

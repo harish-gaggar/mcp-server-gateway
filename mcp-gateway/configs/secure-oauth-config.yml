@@ -1,23 +1,36 @@
-# OAuth providers for the "secure" (per-user OAuth) mode of the gateway.
+# OAuth providers for secure (per-user) mode.
 #
-# In this mode the gateway authenticates each user in the browser via Google,
-# then hands the user's OIDC id_token to the upstream MCP server, which exchanges
-# it for a short-lived, user-scoped JFrog access token. No shared power-token.
-#
-# Requires GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET to be set.
+# Each MCP server namespace picks its auth_provider in secure-mcp-config.yml.
+# The gateway blocks unauthenticated access (401 + OAuth discovery) and shows a
+# consent screen before forwarding the user's token upstream.
 
 google:
   oidc: true
   issuer: https://accounts.google.com
   client_id: ${GOOGLE_OAUTH_CLIENT_ID}
   client_secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
-  # "openid" is required so Google returns an id_token; "email" gives us a stable
-  # user id and a claim JFrog can match in its identity mapping.
   scope:
     - openid
     - email
-  # use the email claim as the user id (shows up in logs/metrics)
   user_id_claim: email
   extra_params:
     access_type: offline
     prompt: consent
+
+github:
+  oidc: false
+  issuer: https://github.com
+  client_id: ${GITHUB_OAUTH_CLIENT_ID}
+  client_secret: ${GITHUB_OAUTH_CLIENT_SECRET}
+  auth_url: https://github.com/login/oauth/authorize
+  token_url: https://github.com/login/oauth/access_token
+  supports_refresh: false
+  # GitHub OAuth apps accept the classic (non-PKCE) flow; PKCE on the upstream
+  # leg has caused 404 authorize pages for some apps.
+  pkce: false
+  scope:
+    - read:user
+    - public_repo
+  user_info:
+    url: https://api.github.com/user
+    user_id_field: login

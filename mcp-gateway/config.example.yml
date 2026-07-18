@@ -153,22 +153,22 @@ oauth_providers:
     issuer: https://your-org.okta.com/oauth2/default
     client_id: ${okta_client_id}
 
-  # example non-oidc provider (GitHub Enterprise Server)
+  # example non-oidc provider
   github:
     oidc: false
-    issuer: 'https://github.example.com'
+    issuer: 'https://code.corp.creditkarma.com'
     scope: 'repo read:user'
     # auth and token urls have to be specified manually without an automatic
     # metadata discovery endpoint to hit
-    auth_url: 'https://github.example.com/login/oauth/authorize'
-    token_url: 'https://github.example.com/login/oauth/access_token'
+    auth_url: 'https://code.corp.creditkarma.com/login/oauth/authorize'
+    token_url: 'https://code.corp.creditkarma.com/login/oauth/access_token'
     # whether or not this oauth provider supports refresh tokens.
     supports_refresh: true
     # if set, will be used to lookup a unique id for the user based on the returned
     # access token
     user_info:
       # API endpoint that will be hit with the access token
-      url: 'https://github.example.com/api/v3/user'
+      url: 'https://code.corp.creditkarma.com/api/v3/user'
       # field in the response to use as the user id. Supports lodash 'get' syntax,
       # so you can perform more complex field resolution with `.`, i.e. `some.nested.field`
       user_id_field: 'login'

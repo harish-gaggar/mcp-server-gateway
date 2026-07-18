@@ -1,0 +1,28 @@
+{
+  "name": "github-enterprise-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for GitHub Enterprise",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node build/server.js",
+    "start:http": "node build/server.js",
+    "start:stdio": "node build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@octokit/rest": "^20.0.2",
+    "axios": "^1.7.7",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.4"
+  }
+}

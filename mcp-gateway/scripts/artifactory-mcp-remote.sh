@@ -9,9 +9,8 @@
 #   node directly (no runtime npx fetch).
 #
 # Transport: plain HTTP to the local gateway. mcp-remote allows unencrypted
-# connections to localhost with --allow-http, so we do NOT need the old
-# lvh.me + mkcert + https-proxy setup or a custom CA bundle. The whole OAuth
-# (Google login + gateway consent) flow runs over http://localhost:8090.
+# connections to localhost with --allow-http. The OAuth flow (login + gateway
+# consent) runs over http://localhost:8090.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

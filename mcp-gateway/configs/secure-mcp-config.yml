@@ -22,7 +22,11 @@ artifactory:
   description: JFrog Artifactory MCP server (per-user OAuth)
   endpoint: http://artifactory-mcp:8091/mcp
   auth_provider: google
-  # True per-user JFrog RBAC: forward the user's Google id_token upstream so the
-  # artifactory-mcp server can exchange it for a user-scoped JFrog token via
-  # JFrog's OIDC token-exchange endpoint. No shared token is used.
   forward_id_token: true
+
+github:
+  name: github
+  description: GitHub MCP server (per-user OAuth)
+  endpoint: http://github-mcp:8080/mcp
+  auth_provider: github
+  # Gateway forwards the user's GitHub OAuth access_token (not id_token).
