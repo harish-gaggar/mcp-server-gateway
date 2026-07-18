@@ -1,13 +1,13 @@
 # MCP Gateway
 
-HTTP gateway that proxies MCP (Model Context Protocol) clients to one or more backend MCP servers. Supports OAuth for protected upstreams; local backends can run without auth.
+HTTP gateway that proxies MCP clients to backend MCP servers with optional **per-user OAuth**.
 
-This copy is adapted from the production MCP gateway for local development and book examples.
+> **New here?** Start with the [root README](../README.md) for the full step-by-step local setup (Google OAuth, GitHub OAuth App, Docker, Cursor, and testing).
 
 ## Architecture
 
 ```
-MCP client (Cursor, Inspector, etc.)
+MCP client (Cursor, oauth-client-demo, etc.)
         |
         |  POST/GET/DELETE /{namespace}/mcp
         v
@@ -15,133 +15,127 @@ MCP client (Cursor, Inspector, etc.)
         |
         +-- Redis (sessions, tokens, DCR)
         |
-        +-- Backend MCP servers (any streamable-HTTP /mcp endpoint)
-              e.g. artifactory-mcp (:8091)
+        +-- artifactory-mcp  →  JFrog API   (Google OAuth)
+        +-- github-mcp       →  GitHub API  (GitHub OAuth)
 ```
 
-Each backend is registered in YAML under `mcp_servers`. The gateway forwards MCP session headers (`mcp-session-id`, `mcp-protocol-version`, etc.) and proxies GET/POST/DELETE to the upstream `/mcp` URL.
+Each backend is registered in `configs/secure-mcp-config.yml` (secure mode) or `configs/local-mcp-config.yml` (open mode). The gateway forwards MCP session headers and proxies to the upstream `/mcp` URL.
 
-## Quick start (Docker)
+## Quick commands
 
 ```bash
-cd mcp-gateway
-
-# One-time setup
-cp .env.example .env
-openssl rand -base64 32   # paste into TOKEN_ENCRYPTION_KEY in .env
-
-# Optional: set real JFrog credentials in .env
-# ARTIFACTORY_BASE_URL=https://your-instance.jfrog.io/artifactory
-# ARTIFACTORY_ACCESS_TOKEN=your-access-or-identity-token
-
+# From mcp-gateway/ — assumes .env is configured (see root README)
 docker compose up -d --build
-npm run test:e2e
+docker compose ps
+curl -s http://localhost:8090/health
+
+# OAuth end-to-end test (opens browser)
+python3 scripts/oauth-client-demo.py --namespace artifactory --tool list_repositories
+python3 scripts/oauth-client-demo.py --namespace github --tool list_repositories
+
+# Tear down
+docker compose down
 ```
 
-Endpoints:
+## Configuration modes
 
-| Service | URL |
-|---------|-----|
-| Gateway health | http://localhost:8090/health |
-| Gateway homepage | http://localhost:8090/ |
-| Artifactory MCP (direct) | http://localhost:8091/mcp |
-| Artifactory via gateway | http://localhost:8090/artifactory/mcp |
+| Mode | `.env` | MCP config | OAuth config | Use case |
+|------|--------|------------|--------------|----------|
+| **Open** (default) | `OAUTH_CONFIG_FILE` unset | `local-mcp-config.yml` | `local-oauth-config.yml` (`{}`) | Smoke test without OAuth |
+| **Secure** | `OAUTH_CONFIG_FILE=./configs/secure-oauth-config.yml` | `secure-mcp-config.yml` | `secure-oauth-config.yml` | Per-user OAuth (book demo) |
 
-## Quick start (host gateway + Docker backends)
+Secure mode environment variables (full list in `.env.example`):
 
-```bash
-docker compose up -d redis artifactory-mcp
-cp .env.example .env   # set TOKEN_ENCRYPTION_KEY
-npm install
-npm run dev            # gateway on :8090, uses configs/local-host.yml
-npm run test:e2e
+| Variable | Required in secure mode | Description |
+|----------|-------------------------|-------------|
+| `TOKEN_ENCRYPTION_KEY` | Yes | `openssl rand -base64 32` |
+| `GOOGLE_OAUTH_CLIENT_ID` | For Artifactory | Google Cloud OAuth client |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | For Artifactory | Google Cloud OAuth secret |
+| `GITHUB_OAUTH_CLIENT_ID` | For GitHub | GitHub OAuth App client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | For GitHub | GitHub OAuth App secret |
+| `ARTIFACTORY_BASE_URL` | For live JFrog data | e.g. `https://YOUR.jfrog.io/artifactory` |
+| `ARTIFACTORY_OIDC_PROVIDER_NAME` | Optional | True per-user JFrog RBAC via OIDC |
+| `GITHUB_ALLOWED_USERS` | Optional | Comma-separated GitHub logins |
+| `GATEWAY_BASE_URL` | Recommended | `http://localhost:8090` |
+
+Both OAuth providers share one gateway callback URL:
+
+```
+http://localhost:8090/oauth2callback
 ```
 
-## Add another MCP server
-
-Edit `configs/local-mcp-config.yml` (Docker) or `configs/local-host-mcp-config.yml` (host):
-
-```yaml
-my-server:
-  name: my-server
-  description: My MCP backend
-  endpoint: http://my-mcp:8080/mcp
-  # auth_provider: google   # omit for open local servers
-```
-
-Restart the gateway. Clients connect to `http://localhost:8090/my-server/mcp`.
-
-For OAuth-protected upstreams, add a provider in `configs/local-oauth-config.yml` and set `auth_provider` on the server entry.
-
-## Configuration
+## Config files
 
 | File | Purpose |
 |------|---------|
-| `configs/local.yml` | Gateway config when running inside Docker Compose |
-| `configs/local-host.yml` | Gateway config when running on the host |
-| `configs/local-mcp-config.yml` | Backend MCP servers (Docker network hostnames) |
-| `configs/local-host-mcp-config.yml` | Backend MCP servers (localhost ports) |
-| `configs/local-oauth-config.yml` | OAuth providers (empty `{}` for auth-free local testing) |
-| `config.example.yml` | Full reference for all options |
+| `configs/secure-oauth-config.yml` | Google + GitHub OAuth providers |
+| `configs/secure-mcp-config.yml` | Artifactory + GitHub backend routes |
+| `configs/local-mcp-config.yml` | Open-mode backends (Docker hostnames) |
+| `configs/local-oauth-config.yml` | Empty `{}` — no OAuth |
+| `config.example.yml` | Full gateway option reference |
 
-Environment variables:
+## Cursor integration
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `TOKEN_ENCRYPTION_KEY` | Yes | Base64 key, 32+ bytes (`openssl rand -base64 32`) |
-| `ARTIFACTORY_BASE_URL` | For live JFrog calls | JFrog Artifactory base URL |
-| `ARTIFACTORY_ACCESS_TOKEN` | For live JFrog calls | JFrog access/identity token, sent as `Authorization: Bearer` (works with company + free-tier) |
-| `ARTIFACTORY_API_KEY` | Optional | Legacy API key fallback (`X-JFrog-Art-Api`); deprecated by JFrog |
+Wrappers in `scripts/` launch `mcp-remote` against the gateway over plain HTTP (`--allow-http`):
 
-> **JFrog auth note:** API keys are End-of-Life — new JFrog instances can no
-> longer create them. Generate an **access token** (admin: *Administration →
-> User Management → Access Tokens*) or an **identity token** (*Profile →
-> Generate an Identity Token*) and put it in `ARTIFACTORY_ACCESS_TOKEN`.
+| Script | Gateway URL |
+|--------|-------------|
+| `scripts/artifactory-mcp-remote.sh` | `http://localhost:8090/artifactory/mcp` |
+| `scripts/github-mcp-remote.sh` | `http://localhost:8090/github/mcp` |
 
-## Test with curl
+One-time setup:
 
 ```bash
-# Health
-curl -s http://localhost:8090/health
-
-# Initialize via gateway
-curl -s -X POST http://localhost:8090/artifactory/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
-
-# List tools
-curl -s -X POST http://localhost:8090/artifactory/mcp \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+cd tools/mcp-remote-runner && npm install
 ```
 
-## Development
-
-```bash
-npm run dev          # hot reload, host config
-npm run build        # compile to dist/
-npm run test         # lint + typecheck + unit tests
-npm run test:e2e     # end-to-end via running gateway
-npm run compose:up   # full Docker stack
-npm run compose:down
-```
-
-Requires Node.js 24 and Redis.
-
-## Cursor / MCP client config
-
-For auth-free local servers:
+Example `~/.cursor/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "artifactory": {
-      "url": "http://localhost:8090/artifactory/mcp"
+      "command": "/ABSOLUTE/PATH/TO/mcp-gateway/scripts/artifactory-mcp-remote.sh"
+    },
+    "github": {
+      "command": "/ABSOLUTE/PATH/TO/mcp-gateway/scripts/github-mcp-remote.sh"
     }
   }
 }
 ```
 
-OAuth-backed servers require completing the gateway OAuth flow first; see `config.example.yml` for provider setup.
+## Development (host gateway)
+
+Run the gateway on the host while backends stay in Docker:
+
+```bash
+docker compose up -d redis artifactory-mcp github-mcp
+cp .env.example .env   # configure as in root README
+npm install
+npm run dev            # gateway on :8090
+```
+
+```bash
+npm run build          # compile to dist/
+npm run test           # lint + typecheck + unit tests
+npm run test:e2e       # end-to-end via running gateway
+```
+
+Requires Node.js 24 and Redis.
+
+## Monitoring (optional)
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` in `.env` and bring up the stack under `monitoring/` for Grafana traces of OAuth flows and tool calls.
+
+## curl smoke test (open mode only)
+
+When running in open mode without OAuth:
+
+```bash
+curl -s -X POST http://localhost:8090/artifactory/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
+```
+
+In secure mode, unauthenticated calls return **401** with a `WWW-Authenticate` header pointing at OAuth discovery — that is expected.
