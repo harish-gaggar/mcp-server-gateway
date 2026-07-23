@@ -17,6 +17,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_DIR="${SCRIPT_DIR}/../tools/mcp-remote-runner"
 NODE_BIN="${NODE_BIN:-$(command -v node)}"
 TARGET_URL="${MCP_GATEWAY_URL:-http://localhost:8090/artifactory/mcp}"
+# Pin a fixed loopback callback port so the OAuth token cache key stays stable
+# across restarts. Without it, mcp-remote picks a random port each launch, which
+# changes the cache key, invalidates the cached token, and forces a fresh
+# interactive browser login on every start. Use a distinct port per namespace.
+CALLBACK_PORT="${MCP_CALLBACK_PORT:-42833}"
 
 if [[ ! -x "$NODE_BIN" ]]; then
   echo "node not found; set NODE_BIN to your node binary" >&2
@@ -25,4 +30,4 @@ fi
 
 cd "$RUNNER_DIR"
 
-exec "$NODE_BIN" "$RUNNER_DIR/node_modules/mcp-remote/dist/proxy.js" "$TARGET_URL" --allow-http
+exec "$NODE_BIN" "$RUNNER_DIR/node_modules/mcp-remote/dist/proxy.js" "$TARGET_URL" "$CALLBACK_PORT" --allow-http

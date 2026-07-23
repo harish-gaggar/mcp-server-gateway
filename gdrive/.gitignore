@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+.env
+.venv/
+venv/
+# Never commit Google credentials
+*service-account*.json
+credentials.json
+token.json

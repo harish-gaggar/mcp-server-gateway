@@ -63,6 +63,7 @@ mcp-server-gateway/
 ├── mcp-gateway/          # Gateway + docker compose + Cursor wrappers
 ├── artifcatory/          # Python Artifactory MCP server
 ├── github/               # TypeScript GitHub MCP server
+├── gdrive/               # Python Google Drive + Docs MCP server (standalone)
 ├── Agents/
 │   └── jfrog-agent/      # Optional LangGraph + Streamlit JFrog AI agent
 └── README.md             # ← you are here
@@ -135,12 +136,25 @@ GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-xxxxxxxx
 
 To exchange each user's Google `id_token` for a **user-scoped JFrog token** (instead of a shared token), you also need a JFrog OIDC integration:
 
-1. In JFrog Platform → **Access** → **Identity and Access** → **OIDC Integrations**, create a provider named `google-mcp-gateway` (must match `.env`).
-2. Configure identity mapping so the Google email maps to a JFrog user.
+1. In JFrog Platform → **Administration** → **General Management** → **Manage Integrations** → **OpenID Connect** tab, click **New Integration → OpenID Connect** and create a provider (set the Projects dropdown to **All Projects** first):
+   - **Provider Name:** `google-mcp-gateway` (must match `ARTIFACTORY_OIDC_PROVIDER_NAME` in `.env`)
+   - **Provider Type:** `generic`
+   - **Provider URL:** `https://accounts.google.com`
+   - **Audience:** your Google OAuth **client ID** (the same `GOOGLE_OAUTH_CLIENT_ID` from `.env`)
+2. Add an **Identity Mapping** to that integration. Match on the `aud` claim (your client ID) so **any** user who authenticated through the gateway is trusted — no per-email hardcoding:
+   - **Claims JSON:**
+     ```json
+     { "aud": "<YOUR_GOOGLE_CLIENT_ID>.apps.googleusercontent.com" }
+     ```
+   - **Token scope:** `Group` → `readers` (uniform read access for every authenticated user), leave the user field blank.
+     Alternatively, use `User Dynamic Mapping` with pattern `{{email}}` for per-user identity (non-existent users become transient users and inherit any group marked *Automatically Join New Users*).
+   - **Service:** All · **Expiry:** `60`
 3. Uncomment in `.env`:
    ```bash
    ARTIFACTORY_OIDC_PROVIDER_NAME=google-mcp-gateway
    ```
+
+> **Important:** If you ever recreate the Google OAuth client, the token's `aud` changes — update the **Audience** on the integration **and** the `aud` in the identity mapping's Claims JSON to the new client ID, or the exchange fails with `HTTP 403 Forbidden`.
 
 Skip this subsection if you only want to validate the OAuth + gateway flow first.
 
@@ -284,10 +298,15 @@ Edit `~/.cursor/mcp.json` (use absolute paths on your machine):
     },
     "github": {
       "command": "/ABSOLUTE/PATH/TO/mcp-server-gateway/mcp-gateway/scripts/github-mcp-remote.sh"
+    },
+    "gdrive": {
+      "command": "/ABSOLUTE/PATH/TO/mcp-server-gateway/mcp-gateway/scripts/gdrive-mcp-remote.sh"
     }
   }
 }
 ```
+
+> **Note:** Each wrapper pins a **fixed loopback callback port** (`42833` artifactory, `42834` github, `42835` gdrive). This keeps the `mcp-remote` OAuth token cache stable across restarts — otherwise a random port each launch invalidates the cached token and forces a fresh browser login every time. Override per server with `MCP_CALLBACK_PORT` if a port is already in use.
 
 ### 7c. Authenticate in Cursor
 
@@ -364,6 +383,9 @@ Full instructions (local run, memory backends incl. the Spanner emulator, and th
 | Cursor **Error — Show Output** | `mcp-remote` not installed | Run `npm install` in `tools/mcp-remote-runner/` |
 | Artifactory tools return empty/errors | JFrog URL wrong or OIDC not configured | Check `ARTIFACTORY_BASE_URL`; set up OIDC for per-user mode |
 | `GITHUB_ALLOWED_USERS` rejection | Logged in as different GitHub user | Match login in `.env` or clear the allowlist |
+| Browser login prompts **every** call / OAuth callback `ERR_CONNECTION_REFUSED` on a random `localhost:<port>` | `mcp-remote` used a random callback port, invalidating the cached token | Ensure the wrappers pin `CALLBACK_PORT` (already set); clear stale state with `rm -rf ~/.mcp-auth/mcp-remote-*` and reconnect once |
+| `JFrog OIDC exchange failed: HTTP 403 Forbidden` | Identity mapping's `aud` (or email) claim doesn't match the live token — usually after recreating the Google client | Update the OIDC integration **Audience** and the identity mapping **Claims JSON** `aud` to the current `GOOGLE_OAUTH_CLIENT_ID` |
+| `JFrog OIDC exchange failed: HTTP 400 invalid audience` | Integration **Audience** doesn't equal the Google client ID | Set the integration's Audience to `GOOGLE_OAUTH_CLIENT_ID` |
 
 View gateway logs:
 

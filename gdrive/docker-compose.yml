@@ -1,0 +1,25 @@
+services:
+  gdrive-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gdrive-mcp-server
+    ports:
+      - "8092:8092"
+    environment:
+      # --- Open mode (shared credential) ---
+      # A Google OAuth access token with Drive/Docs scopes, sent as Bearer.
+      GOOGLE_ACCESS_TOKEN: ${GOOGLE_ACCESS_TOKEN:-}
+      # Or mint tokens from a mounted service-account key file.
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
+      GOOGLE_IMPERSONATE_SUBJECT: ${GOOGLE_IMPERSONATE_SUBJECT:-}
+      # --- Secure mode (per-user OAuth) ---
+      # When true, each request uses the user's Google access token forwarded
+      # by the gateway instead of a shared credential.
+      GDRIVE_SECURE_MODE: ${GDRIVE_SECURE_MODE:-}
+      HOST: 0.0.0.0
+      PORT: 8092
+      MCP_DISABLE_DNS_REBINDING: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

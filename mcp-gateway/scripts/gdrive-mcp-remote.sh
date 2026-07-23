@@ -1,15 +1,15 @@
 #!/bin/bash
-# Cursor wrapper: mcp-remote -> local MCP gateway /github namespace (OAuth-protected).
+# Cursor wrapper: mcp-remote -> local MCP gateway /gdrive namespace (OAuth-protected).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER_DIR="${SCRIPT_DIR}/../tools/mcp-remote-runner"
 NODE_BIN="${NODE_BIN:-$(command -v node)}"
-TARGET_URL="${MCP_GATEWAY_URL:-http://localhost:8090/github/mcp}"
+TARGET_URL="${MCP_GATEWAY_URL:-http://localhost:8090/gdrive/mcp}"
 # Pin a fixed loopback callback port so the OAuth token cache stays stable across
 # restarts (a random port forces a fresh browser login every launch). Use a
 # distinct port per namespace.
-CALLBACK_PORT="${MCP_CALLBACK_PORT:-42834}"
+CALLBACK_PORT="${MCP_CALLBACK_PORT:-42835}"
 
 if [[ ! -x "$NODE_BIN" ]]; then
   echo "node not found; set NODE_BIN to your node binary" >&2
