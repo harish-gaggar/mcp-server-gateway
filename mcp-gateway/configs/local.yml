@@ -28,6 +28,12 @@ redis:
 
 token:
   encryption_key: ${TOKEN_ENCRYPTION_KEY}
+  # GitHub OAuth-app tokens (gho_) don't return expires_in and the github
+  # provider has no refresh token, so the gateway falls back to this TTL. Keep it
+  # long to avoid forcing a full browser re-auth (and the resulting authorize
+  # loop) every hour. Providers that report their own expiry (e.g. Google) are
+  # unaffected — they keep their real TTL + refresh flow.
+  access_token_ttl: 30d
 
 dcr:
   enabled: true

@@ -17,6 +17,24 @@ google:
     access_type: offline
     prompt: consent
 
+# Google provider scoped for Drive + Docs. Same OAuth client as `google`, but
+# requests Drive/Docs scopes so the forwarded access_token can read/write the
+# user's files. Used by the `gdrive` MCP server (forwards access_token).
+google-drive:
+  oidc: true
+  issuer: https://accounts.google.com
+  client_id: ${GOOGLE_OAUTH_CLIENT_ID}
+  client_secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
+  scope:
+    - openid
+    - email
+    - https://www.googleapis.com/auth/drive
+    - https://www.googleapis.com/auth/documents
+  user_id_claim: email
+  extra_params:
+    access_type: offline
+    prompt: consent
+
 github:
   oidc: false
   issuer: https://github.com

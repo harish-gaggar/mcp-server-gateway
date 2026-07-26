@@ -58,6 +58,33 @@ services:
       retries: 5
       start_period: 15s
 
+  gdrive-mcp:
+    build:
+      context: ../gdrive
+      dockerfile: Dockerfile
+    container_name: gdrive-mcp-server
+    environment:
+      # --- Open mode (shared credential) ---
+      GOOGLE_ACCESS_TOKEN: ${GOOGLE_ACCESS_TOKEN:-}
+      GOOGLE_SERVICE_ACCOUNT_FILE: ${GOOGLE_SERVICE_ACCOUNT_FILE:-}
+      GOOGLE_IMPERSONATE_SUBJECT: ${GOOGLE_IMPERSONATE_SUBJECT:-}
+      # --- Secure mode (per-user OAuth) ---
+      # When true, the gateway forwards the user's Google access_token and the
+      # server acts as that user. Enable this in secure mode.
+      GDRIVE_SECURE_MODE: ${GDRIVE_SECURE_MODE:-}
+      HOST: 0.0.0.0
+      PORT: 8092
+      MCP_DISABLE_DNS_REBINDING: "true"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Internal only — clients go through the OAuth-protected gateway.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8092/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   gateway:
     build:
       context: .
@@ -94,6 +121,8 @@ services:
       artifactory-mcp:
         condition: service_healthy
       github-mcp:
+        condition: service_healthy
+      gdrive-mcp:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8090/health"]

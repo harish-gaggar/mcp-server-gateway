@@ -6,6 +6,11 @@ artifactory:
   description: JFrog Artifactory MCP server (local Docker)
   endpoint: http://artifactory-mcp:8091/mcp
 
+gdrive:
+  name: gdrive
+  description: Google Drive + Docs MCP server (local Docker)
+  endpoint: http://gdrive-mcp:8092/mcp
+
 # Example: add more backends by pointing at their /mcp endpoint.
 # github:
 #   name: github

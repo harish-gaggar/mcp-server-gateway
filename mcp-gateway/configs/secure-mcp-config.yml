@@ -30,3 +30,11 @@ github:
   endpoint: http://github-mcp:8080/mcp
   auth_provider: github
   # Gateway forwards the user's GitHub OAuth access_token (not id_token).
+
+gdrive:
+  name: gdrive
+  description: Google Drive + Docs MCP server (per-user OAuth)
+  endpoint: http://gdrive-mcp:8092/mcp
+  auth_provider: google-drive
+  # Gateway forwards the user's Google OAuth access_token (not id_token); the
+  # server calls the Drive/Docs APIs directly as that user.

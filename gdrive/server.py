@@ -29,9 +29,17 @@ DOCS_API_BASE = "https://docs.googleapis.com/v1"
 # prefer a service account (below) or secure mode.
 GOOGLE_ACCESS_TOKEN = os.getenv("GOOGLE_ACCESS_TOKEN")
 
-# Path to a Google service-account JSON key file. When set (and not in secure
-# mode), the server mints its own OAuth access tokens for the configured scopes.
-# Optionally impersonate a Workspace user via GOOGLE_IMPERSONATE_SUBJECT.
+# --- Service-identity mode (automation) ---
+# Preferred: keyless Application Default Credentials (ADC). Set GOOGLE_USE_ADC=true
+# and provide the identity via the environment instead of a downloaded key:
+#   - GKE: Workload Identity (Kubernetes SA bound to a Google SA)
+#   - Cloud Run / GCE: the attached service account
+#   - off-GCP: Workload Identity Federation (a credential-config file, not a key)
+#   - local dev: `gcloud auth application-default login`
+# Fallback (discouraged): GOOGLE_SERVICE_ACCOUNT_FILE points at a downloaded
+# service-account JSON key. Long-lived keys are a high-value secret; prefer ADC.
+# Either path may impersonate a Workspace user via GOOGLE_IMPERSONATE_SUBJECT.
+GOOGLE_USE_ADC = os.getenv("GOOGLE_USE_ADC", "").lower() in ("1", "true", "yes")
 GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
 GOOGLE_IMPERSONATE_SUBJECT = os.getenv("GOOGLE_IMPERSONATE_SUBJECT")
 GOOGLE_SCOPES = os.getenv(
@@ -55,14 +63,20 @@ if SECURE_MODE:
     print("Secure mode: using each request's forwarded Google OAuth access token.")
 elif GOOGLE_ACCESS_TOKEN:
     print("Open mode: using shared GOOGLE_ACCESS_TOKEN Bearer credential.")
+elif GOOGLE_USE_ADC:
+    print("Service-identity mode: keyless Application Default Credentials (ADC).")
+    if GOOGLE_IMPERSONATE_SUBJECT:
+        print(f"Impersonating Workspace user: {GOOGLE_IMPERSONATE_SUBJECT}")
 elif GOOGLE_SERVICE_ACCOUNT_FILE:
-    print(f"Open mode: minting tokens from service account {GOOGLE_SERVICE_ACCOUNT_FILE}")
+    print(f"Service-identity mode: minting tokens from key file {GOOGLE_SERVICE_ACCOUNT_FILE}")
+    print("Note: downloaded keys are discouraged; prefer GOOGLE_USE_ADC (Workload Identity).")
     if GOOGLE_IMPERSONATE_SUBJECT:
         print(f"Impersonating Workspace user: {GOOGLE_IMPERSONATE_SUBJECT}")
 else:
     print("Warning: no Google credentials configured.")
-    print("Set GDRIVE_SECURE_MODE=true (gateway), GOOGLE_ACCESS_TOKEN, or")
-    print("GOOGLE_SERVICE_ACCOUNT_FILE. API calls will return 401 until then.")
+    print("Set GDRIVE_SECURE_MODE=true (gateway), GOOGLE_ACCESS_TOKEN,")
+    print("GOOGLE_USE_ADC=true, or GOOGLE_SERVICE_ACCOUNT_FILE.")
+    print("API calls will return 401 until then.")
 
 # Initialize FastMCP server
 mcp = FastMCP("gdrive-mcp-server")
@@ -100,27 +114,58 @@ def _incoming_bearer_token() -> Optional[str]:
 
 
 def _service_account_token() -> str:
-    """Mint (and cache) an OAuth access token from the configured service
-    account JSON key, for the configured scopes."""
+    """Mint (and cache) an OAuth access token for a service identity, for the
+    configured scopes.
+
+    Prefers keyless Application Default Credentials (GOOGLE_USE_ADC): the identity
+    comes from Workload Identity, an attached service account, Workload Identity
+    Federation, or `gcloud auth application-default login` — no key on disk. Falls
+    back to a downloaded JSON key (GOOGLE_SERVICE_ACCOUNT_FILE) only if ADC is off.
+    """
     global _sa_token_cache
     token, expiry = _sa_token_cache
     if token and time.time() < expiry - 60:
         return token
 
     try:
-        from google.oauth2 import service_account
         from google.auth.transport.requests import Request as GoogleAuthRequest
     except ImportError as exc:  # pragma: no cover - depends on optional dep
         raise RuntimeError(
-            "GOOGLE_SERVICE_ACCOUNT_FILE is set but google-auth is not installed. "
+            "A service identity is configured but google-auth is not installed. "
             "Add google-auth to requirements.txt."
         ) from exc
 
-    creds = service_account.Credentials.from_service_account_file(
-        GOOGLE_SERVICE_ACCOUNT_FILE, scopes=GOOGLE_SCOPES
-    )
-    if GOOGLE_IMPERSONATE_SUBJECT:
-        creds = creds.with_subject(GOOGLE_IMPERSONATE_SUBJECT)
+    if GOOGLE_SERVICE_ACCOUNT_FILE and not GOOGLE_USE_ADC:
+        # Discouraged fallback: long-lived downloaded key.
+        from google.oauth2 import service_account
+
+        creds = service_account.Credentials.from_service_account_file(
+            GOOGLE_SERVICE_ACCOUNT_FILE, scopes=GOOGLE_SCOPES
+        )
+        if GOOGLE_IMPERSONATE_SUBJECT:
+            creds = creds.with_subject(GOOGLE_IMPERSONATE_SUBJECT)
+    else:
+        # Preferred: keyless ADC (Workload Identity / attached SA / federation).
+        import google.auth
+
+        creds, _ = google.auth.default(scopes=GOOGLE_SCOPES)
+        if GOOGLE_IMPERSONATE_SUBJECT:
+            # Domain-wide delegation without a key: impersonate the target
+            # service account, then assume the Workspace user as subject.
+            from google.auth import impersonated_credentials
+
+            sa_email = getattr(creds, "service_account_email", None)
+            if not sa_email:
+                raise RuntimeError(
+                    "GOOGLE_IMPERSONATE_SUBJECT is set but the ADC identity is not "
+                    "a service account that can perform domain-wide delegation."
+                )
+            creds = impersonated_credentials.Credentials(
+                source_credentials=creds,
+                target_principal=sa_email,
+                target_scopes=GOOGLE_SCOPES,
+                subject=GOOGLE_IMPERSONATE_SUBJECT,
+            )
 
     creds.refresh(GoogleAuthRequest())
     expiry_epoch = creds.expiry.timestamp() if creds.expiry else time.time() + 3600
@@ -144,11 +189,11 @@ def _access_token() -> str:
         return token
     if GOOGLE_ACCESS_TOKEN:
         return GOOGLE_ACCESS_TOKEN
-    if GOOGLE_SERVICE_ACCOUNT_FILE:
+    if GOOGLE_USE_ADC or GOOGLE_SERVICE_ACCOUNT_FILE:
         return _service_account_token()
     raise RuntimeError(
         "No Google credentials configured. Set GDRIVE_SECURE_MODE=true, "
-        "GOOGLE_ACCESS_TOKEN, or GOOGLE_SERVICE_ACCOUNT_FILE."
+        "GOOGLE_ACCESS_TOKEN, GOOGLE_USE_ADC=true, or GOOGLE_SERVICE_ACCOUNT_FILE."
     )
 
 
