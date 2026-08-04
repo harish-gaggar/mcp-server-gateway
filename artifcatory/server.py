@@ -5,6 +5,7 @@ JFrog Artifactory MCP Server
 A Model Context Protocol server that provides tools to interact with JFrog Artifactory.
 """
 
+import json
 import os
 import httpx
 from typing import Optional
@@ -12,6 +13,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+
+from safe_aql import build_search_aql, SafeAQLError
 
 # Environment variables
 ARTIFACTORY_BASE_URL = os.getenv("ARTIFACTORY_BASE_URL", "http://localhost:8081/artifactory")
@@ -193,31 +196,41 @@ def get_repository_info(repository: str) -> str:
 
 
 @mcp.tool()
-def search_artifacts(name: Optional[str] = None, repo: Optional[str] = None) -> str:
+def search_artifacts(
+    name: Optional[str] = None,
+    repo: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> str:
     """
-    Search for artifacts in Artifactory using AQL (Artifactory Query Language).
-    
+    Search for artifacts in Artifactory by name pattern and/or repository.
+
+    Every call is validated and bounded on the server before any query runs:
+    input is checked against character rules and an optional repository
+    allowlist, the AQL is built deterministically (never by interpolating raw
+    input), sensitive fields such as checksums are excluded, and the result set
+    is capped. These guarantees apply to *every* caller -- agents, IDE
+    assistants, scripts, and direct MCP clients -- because they live in the
+    server rather than in one client.
+
     Args:
-        name: Artifact name pattern to search for
-        repo: Repository to search in
-    
+        name: Artifact name pattern. Letters, digits, and . _ - / plus the
+            * and ? wildcards. Other characters are rejected.
+        repo: Repository to search in. Must be in ARTIFACTORY_REPO_ALLOWLIST
+            when that allowlist is configured.
+        limit: Maximum number of results. Clamped to ARTIFACTORY_MAX_RESULTS.
+
     Returns:
-        JSON string with search results
+        JSON string with search results, or a JSON error object of the form
+        {"error": "invalid_search", "detail": "..."} when the request is
+        rejected by the safety checks.
     """
-    # Build AQL query
-    aql_query = 'items.find({'
-    conditions = []
-    
-    if name:
-        conditions.append(f'"name": {{"$match": "{name}"}}')
-    if repo:
-        conditions.append(f'"repo": "{repo}"')
-    
-    if conditions:
-        aql_query += ', '.join(conditions)
-    
-    aql_query += '})'
-    
+    try:
+        aql_query = build_search_aql(name=name, repo=repo, limit=limit)
+    except SafeAQLError as exc:
+        # Normalize the rejection into a small, structured error. We surface the
+        # reason to the caller but never the raw backend query or internals.
+        return json.dumps({"error": "invalid_search", "detail": str(exc)})
+
     with get_artifactory_client() as client:
         response = client.post(
             "/api/search/aql",

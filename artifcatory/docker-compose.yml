@@ -12,6 +12,10 @@ services:
       ARTIFACTORY_ACCESS_TOKEN: ${ARTIFACTORY_ACCESS_TOKEN:-}
       # Legacy fallback for older self-hosted API keys only.
       ARTIFACTORY_API_KEY: ${ARTIFACTORY_API_KEY:-}
+      # search_artifacts safety controls (see safe_aql.py). Empty allowlist =
+      # not restricted by repo, but still bounded by the result cap/ceiling.
+      ARTIFACTORY_REPO_ALLOWLIST: ${ARTIFACTORY_REPO_ALLOWLIST:-}
+      ARTIFACTORY_MAX_RESULTS: ${ARTIFACTORY_MAX_RESULTS:-100}
       HOST: 0.0.0.0
       PORT: 8091
       MCP_DISABLE_DNS_REBINDING: "true"

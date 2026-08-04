@@ -71,7 +71,7 @@ The MCP server provides the following tools:
 
 - **`list_repositories`** - List all repositories (with optional type filter)
 - **`get_repository_info`** - Get detailed repository information
-- **`search_artifacts`** - Search for artifacts using AQL
+- **`search_artifacts`** - Search for artifacts by name/repo. Input is validated and the AQL is built server-side (`safe_aql.py`): repository allowlist, character rules, denied checksum fields, and a hard result cap apply to every caller. See `tests/test_safe_aql.py`.
 - **`get_artifact_info`** - Get information about a specific artifact
 - **`get_folder_info`** - Get folder contents and structure
 - **`get_system_info`** - Get Artifactory system version
@@ -84,6 +84,8 @@ Configure the server using environment variables:
 - `ARTIFACTORY_BASE_URL` - Your Artifactory instance URL (required)
 - `ARTIFACTORY_ACCESS_TOKEN` - JFrog access/identity token, sent as `Authorization: Bearer` (recommended)
 - `ARTIFACTORY_API_KEY` - Legacy API key fallback, sent as `X-JFrog-Art-Api` (optional, deprecated)
+- `ARTIFACTORY_REPO_ALLOWLIST` - Comma-separated repositories `search_artifacts` may query. Empty = not restricted by repo (still bounded by the result cap).
+- `ARTIFACTORY_MAX_RESULTS` - Hard cap on `search_artifacts` results (default: `100`, ceiling: `1000`).
 - `HOST` - Server bind address (default: `0.0.0.0`)
 - `PORT` - Server port (default: `8080`)
 

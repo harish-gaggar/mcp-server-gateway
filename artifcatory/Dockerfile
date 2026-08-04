@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY server.py .
+COPY safe_aql.py .
 
 # Make the script executable
 RUN chmod +x server.py
