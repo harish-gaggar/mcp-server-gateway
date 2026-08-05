@@ -12,7 +12,7 @@ services:
 
   artifactory-mcp:
     build:
-      context: ../artifcatory
+      context: ../artifactory
       dockerfile: Dockerfile
     container_name: artifactory-mcp-server
     environment:

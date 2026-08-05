@@ -4,7 +4,7 @@ A local, book-ready reference stack for running **MCP Gateway** with two OAuth-p
 
 | Backend | Namespace | OAuth provider | What it does |
 |---------|-----------|----------------|--------------|
-| [Artifactory MCP](artifcatory/) | `/artifactory/mcp` | Google | JFrog Artifactory tools (repos, artifacts, search) |
+| [Artifactory MCP](artifactory/) | `/artifactory/mcp` | Google | JFrog Artifactory tools (repos, artifacts, search) |
 | [GitHub MCP](github/) | `/github/mcp` | GitHub | GitHub API tools (repos, issues, PRs, search) |
 
 There is also an optional **[JFrog AI Agent (Command Center)](Agents/jfrog-agent/)** — a
@@ -61,7 +61,7 @@ Repo layout:
 ```
 mcp-server-gateway/
 ├── mcp-gateway/          # Gateway + docker compose + Cursor wrappers
-├── artifcatory/          # Python Artifactory MCP server
+├── artifactory/          # Python Artifactory MCP server
 ├── github/               # TypeScript GitHub MCP server
 ├── gdrive/               # Python Google Drive + Docs MCP server (standalone)
 ├── Agents/

@@ -1,10 +1,10 @@
 """Negative and positive tests for the server-side safe AQL builder.
 
 These run directly against the MCP server's own boundary
-(``artifcatory/safe_aql.py``), not the agent, proving that any caller reaching
+(``artifactory/safe_aql.py``), not the agent, proving that any caller reaching
 the server -- including IDE assistants and direct MCP clients -- is bounded.
 
-Run from the ``artifcatory/`` directory:
+Run from the ``artifactory/`` directory:
 
     pip install -r requirements-dev.txt
     pytest -q
