@@ -1,45 +1,26 @@
-# MCP Server Gateway
+# MCP Server Gateway and MCP servers with Agents frameworks
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
-
-## What this is
 
 This repository is a **reference stack for enterprise teams** that need to **build an MCP gateway and MCP servers from scratch**, often starting in an **air-gapped or restricted network** where public SaaS patterns do not apply out of the box. You get working gateway, server, and agent code you can run locally with Docker, then **fork and extend** for internal tools, identity systems, audit rules, and deployment standards.
 
 It is not a hosted product. It is a **starting blueprint**: OAuth-ready gateway, example MCP backends (Artifactory, GitHub, Google Drive), a governed LangGraph agent, PII controls, and the operational pieces (memory, measurement, context control) that production agents usually add later.
 
-## What you can build from here
+<img width="921" height="369" alt="image" src="https://github.com/user-attachments/assets/e2c51646-d205-4d7f-a0ba-7787167175f3" />
 
-| Layer | Purpose |
-|-------|---------|
-| **MCP Gateway** | One HTTP entry (`:8090`), sessions, optional per-user OAuth and consent |
-| **MCP servers** | Example backends you can replace or add to match internal APIs |
-| **Reference agent** | LangGraph + Streamlit Command Center calling tools **through** the gateway |
-| **Agent Safety Kit** | Block secrets and redact PII **before** LLM calls; optional offline scan on stored text |
+## Design framework not just an Agent for solution
 
-```
-Clients (Cursor, scripts, LangGraph agent)
-              |
-              v
-        MCP Gateway :8090
-              |
-    +---------+---------+
-    v         v         v
-Artifactory GitHub    GDrive
-  MCP       MCP        MCP
-```
+<img width="1072" height="359" alt="image" src="https://github.com/user-attachments/assets/7ceb8ff7-6d09-4312-83d2-5d02234ea41b" />
 
-## Agent memory, tracking/eval, and context trimming
+These framework are implemented in [`Agents/jfrog-agent/`](Agents/jfrog-agent/) and are the main reason the reference agent exists alongside the gateway.
 
-These three are implemented in [`Agents/jfrog-agent/`](Agents/jfrog-agent/) and are the main reason the reference agent exists alongside the gateway.
+* **Agent memory** keeps **conversation threads and LangGraph checkpoints** across restarts so multi-step tool workflows do not lose state. Default storage is SQLite on a Docker volume; you can switch to Spanner (including a local emulator) for teams prototyping enterprise-grade persistence.
 
-**Agent memory** keeps **conversation threads and LangGraph checkpoints** across restarts so multi-step tool workflows do not lose state. Default storage is SQLite on a Docker volume; you can switch to Spanner (including a local emulator) for teams prototyping enterprise-grade persistence.
+* **Tracking and eval** records **each agent run**: tools invoked, LLM calls, latency, token usage, and cost estimates. Data lands in SQLite locally for the Insights UI; BigQuery is optional when you want warehouse-style eval at scale. Use it to debug failures, compare runs, and separate **agent traffic from IDE (Cursor) traffic** in gateway metrics.
 
-**Tracking and eval** records **each agent run**: tools invoked, LLM calls, latency, token usage, and cost estimates. Data lands in SQLite locally for the Insights UI; BigQuery is optional when you want warehouse-style eval at scale. Use it to debug failures, compare runs, and separate **agent traffic from IDE (Cursor) traffic** in gateway metrics.
+* **Context trimming** applies **token budgets before planner and summarizer calls** so long MCP transcripts do not blow the context window. The [`context_optimizer`](Agents/jfrog-agent/jfrog_agent/context_optimizer/) module supports layered selection, compression, and presets aimed at **keeping protocol-critical fields** (IDs, permissions, constraints) while trimming narrative fluff. Enable via agent env (see [`Agents/jfrog-agent/README.md`](Agents/jfrog-agent/README.md)).
 
-**Context trimming** applies **token budgets before planner and summarizer calls** so long MCP transcripts do not blow the context window. The [`context_optimizer`](Agents/jfrog-agent/jfrog_agent/context_optimizer/) module supports layered selection, compression, and presets aimed at **keeping protocol-critical fields** (IDs, permissions, constraints) while trimming narrative fluff. Enable via agent env (see [`Agents/jfrog-agent/README.md`](Agents/jfrog-agent/README.md)).
-
-**PII guard:** the agent image includes [`agent-safety-kit/`](agent-safety-kit/) for pre-LLM input guardrails; the same kit runs standalone in any agent framework.
+* **PII guard:** the agent image includes [`agent-safety-kit/`](agent-safety-kit/) for pre-LLM input guardrails; the same kit runs standalone in any agent framework.
 
 ## Quick start
 
