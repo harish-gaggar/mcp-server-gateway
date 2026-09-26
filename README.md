@@ -2,82 +2,61 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-**Clone → Docker → working MCP stack.** One repo for a **Model Context Protocol gateway**, **MCP servers** (Artifactory, GitHub, Google Drive), a **LangGraph agent** with **memory**, **LLM tracking & eval**, **PII blocking**, and **context trimming**—the pieces teams usually wire up separately.
+## What this is
 
-Use it to learn governed MCP, fork it as a starter, or run the reference agent locally without shared API tokens in git.
+This repository is a **reference stack for enterprise teams** that need to **build an MCP gateway and MCP servers from scratch**, often starting in an **air-gapped or restricted network** where public SaaS patterns do not apply out of the box. You get working gateway, server, and agent code you can run locally with Docker, then **fork and extend** for internal tools, identity systems, audit rules, and deployment standards.
 
----
+It is not a hosted product. It is a **starting blueprint**: OAuth-ready gateway, example MCP backends (Artifactory, GitHub, Google Drive), a governed LangGraph agent, PII controls, and the operational pieces (memory, measurement, context control) that production agents usually add later.
 
-## Why developers use this
+## What you can build from here
 
-| You get | What it solves |
-|--------|----------------|
-| **MCP Gateway** | Single HTTP entry (`:8090`), sessions, optional **per-user OAuth** |
-| **MCP servers** | Artifactory, GitHub, GDrive—each behind the gateway |
-| **LangGraph agent** | Streamlit **Command Center**; tools via gateway; **durable memory** |
-| **Tracking & eval** | Run history, latency, cost estimates, quality views (SQLite local; BigQuery optional) |
-| **Agent Safety Kit** | **PII redaction + secret block** before the LLM; offline PII scan on stored text |
-| **Context trimming** | Token budgets and **protocol-aware** compression in the agent pipeline |
+| Layer | Purpose |
+|-------|---------|
+| **MCP Gateway** | One HTTP entry (`:8090`), sessions, optional per-user OAuth and consent |
+| **MCP servers** | Example backends you can replace or add to match internal APIs |
+| **Reference agent** | LangGraph + Streamlit Command Center calling tools **through** the gateway |
+| **Agent Safety Kit** | Block secrets and redact PII **before** LLM calls; optional offline scan on stored text |
 
 ```
-Developer / Cursor / LangGraph agent
-              │
-              ▼
-     MCP Gateway  :8090
-       OAuth · consent · proxy
-              │
-    ┌─────────┼─────────┐
-    ▼         ▼         ▼
- Artifactory GitHub   GDrive
-   MCP       MCP       MCP
+Clients (Cursor, scripts, LangGraph agent)
+              |
+              v
+        MCP Gateway :8090
+              |
+    +---------+---------+
+    v         v         v
+Artifactory GitHub    GDrive
+  MCP       MCP        MCP
 ```
 
----
+## Agent memory, tracking/eval, and context trimming
 
-## Prerequisites
+These three are implemented in [`Agents/jfrog-agent/`](Agents/jfrog-agent/) and are the main reason the reference agent exists alongside the gateway.
 
-| Tool | Check |
-|------|--------|
-| **Docker** + Compose | `docker compose version` |
-| **Python 3.10+** | For demo scripts & Agent Safety Kit (`python3 --version`) |
-| **Git** | Clone this repo |
+**Agent memory** keeps **conversation threads and LangGraph checkpoints** across restarts so multi-step tool workflows do not lose state. Default storage is SQLite on a Docker volume; you can switch to Spanner (including a local emulator) for teams prototyping enterprise-grade persistence.
 
-Optional later: Google/GitHub OAuth apps (secure mode), OpenAI/Anthropic key (smarter agent planner—not required).
+**Tracking and eval** records **each agent run**: tools invoked, LLM calls, latency, token usage, and cost estimates. Data lands in SQLite locally for the Insights UI; BigQuery is optional when you want warehouse-style eval at scale. Use it to debug failures, compare runs, and separate **agent traffic from IDE (Cursor) traffic** in gateway metrics.
 
----
+**Context trimming** applies **token budgets before planner and summarizer calls** so long MCP transcripts do not blow the context window. The [`context_optimizer`](Agents/jfrog-agent/jfrog_agent/context_optimizer/) module supports layered selection, compression, and presets aimed at **keeping protocol-critical fields** (IDs, permissions, constraints) while trimming narrative fluff. Enable via agent env (see [`Agents/jfrog-agent/README.md`](Agents/jfrog-agent/README.md)).
 
-## Run in 10 minutes
+**PII guard:** the agent image includes [`agent-safety-kit/`](agent-safety-kit/) for pre-LLM input guardrails; the same kit runs standalone in any agent framework.
 
-### 1 — Gateway + MCP servers
+## Quick start
 
-Default compose starts the **gateway**, **Redis**, and **backend MCP servers** in **open mode** (no OAuth setup required to bring the stack up).
+**Prerequisites:** Docker Compose, Python 3.10+ for scripts.
+
+**1. Gateway and MCP servers** (open mode; no OAuth required to boot):
 
 ```bash
 git clone https://github.com/harish-gaggar/mcp-server-gateway.git
 cd mcp-server-gateway/mcp-gateway
-
 cp .env.example .env
-# Required: set TOKEN_ENCRYPTION_KEY in .env (paste output of next line)
-openssl rand -base64 32
-
+openssl rand -base64 32   # set TOKEN_ENCRYPTION_KEY in .env
 docker compose up -d --build
-docker compose ps          # all services healthy
-curl -s http://localhost:8090/health    # ok
+curl -s http://localhost:8090/health
 ```
 
-Optional: point Artifactory at your instance in `.env` (`ARTIFACTORY_BASE_URL`, `ARTIFACTORY_ACCESS_TOKEN`). Without it, the Artifactory MCP process still runs for wiring tests.
-
-**Endpoints**
-
-| URL | Use |
-|-----|-----|
-| `http://localhost:8090/health` | Gateway |
-| `http://localhost:8090/artifactory/mcp` | Artifactory via gateway |
-| `http://localhost:8091/mcp` | Artifactory direct (dev) |
-
-### 2 — LangGraph agent (memory, eval, context trim, PII guard)
-
-With the gateway up on the host, start the **reference agent** (works **without** an LLM API key—offline planner included). **Agent Safety Kit** is baked into the image for pre-LLM guards.
+**2. Reference agent** (offline planner works without an LLM API key):
 
 ```bash
 cd ../Agents/jfrog-agent
@@ -85,96 +64,43 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open **http://localhost:8501** — Command Center UI.
+UI: **http://localhost:8501** (Command, Insights, Security/Governance views).
 
-| Area in UI | Feature |
-|------------|---------|
-| **Operations / Command** | LangGraph runs, MCP tools through gateway |
-| **Insights** | **Tracking & eval** (runs, tokens, latency) |
-| **Security / Governance** | Policy, approvals, redaction hooks |
-| Agent pipeline | **Context trimming** via `jfrog_agent/context_optimizer/` |
-
-Optional in `.env`: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, `JFROG_AGENT_LLM_PROVIDER=openai`.
-
-First-time **Artifactory via gateway**: complete the browser OAuth flow when the UI prompts you (see [secure mode](#secure-mode-per-user-oauth--cursor) below if you enabled it).
-
-### 3 — PII blocker framework (standalone, ~2 minutes)
-
-No Docker required—use **Agent Safety Kit** in any agent (LangGraph, OpenAI loop, etc.).
+**3. Agent Safety Kit only** (no Docker):
 
 ```bash
 cd ../../agent-safety-kit
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest -v
-python examples/01_guard_text.py
-python examples/04_drop_into_any_agent.py
+pip install -e ".[dev]" && pytest -v
 ```
 
-Details: [agent-safety-kit/README.md](agent-safety-kit/README.md).
+## Secure mode and full setup
 
----
-
-## Secure mode (per-user OAuth + Cursor)
-
-For **production-shaped** auth—every user signs in with **Google / GitHub**, gateway consent, no shared tokens in the repo:
-
-1. In `mcp-gateway/.env`, uncomment and set:
-
-   ```bash
-   OAUTH_CONFIG_FILE=./configs/secure-oauth-config.yml
-   MCP_CONFIG_FILE=./configs/secure-mcp-config.yml
-   GATEWAY_BASE_URL=http://localhost:8090
-   GOOGLE_OAUTH_CLIENT_ID=...
-   GOOGLE_OAUTH_CLIENT_SECRET=...
-   GITHUB_OAUTH_CLIENT_ID=...
-   GITHUB_OAUTH_CLIENT_SECRET=...
-   ```
-
-2. Follow **[doc/howto/QUICKSTART.md](doc/howto/QUICKSTART.md)** — create OAuth apps, wire **Cursor**, troubleshooting.
-
-Smoke test without an IDE:
-
-```bash
-cd mcp-gateway
-python3 scripts/oauth-client-demo.py --namespace github --tool list_repositories
-```
-
----
+For per-user OAuth (Google/GitHub), Cursor, monitoring, and troubleshooting, use **[doc/howto/QUICKSTART.md](doc/howto/QUICKSTART.md)**. Uncomment `OAUTH_CONFIG_FILE`, `MCP_CONFIG_FILE`, and provider client IDs in `mcp-gateway/.env.example`.
 
 ## Repository layout
 
 ```
 mcp-server-gateway/
-├── mcp-gateway/              # Gateway + docker compose + Cursor wrappers
-├── artifactory/  github/  gdrive/   # MCP server implementations
-├── agent-safety-kit/         # PII blocker + secrets guard (framework-agnostic)
-├── Agents/jfrog-agent/       # LangGraph agent, memory, tracking, context trim
-└── doc/howto/QUICKSTART.md   # Full OAuth + IDE setup
+├── mcp-gateway/           # Gateway, Compose, Cursor wrappers
+├── artifactory/ github/ gdrive/   # Example MCP servers
+├── agent-safety-kit/      # PII and secrets guard (portable)
+├── Agents/jfrog-agent/    # Memory, tracking/eval, context optimizer
+└── doc/howto/QUICKSTART.md
 ```
-
----
 
 ## Documentation
 
-| Doc | Contents |
-|-----|----------|
-| [Quickstart (OAuth, Cursor, monitoring)](doc/howto/QUICKSTART.md) | Step-by-step secure stack |
-| [Gateway dev](mcp-gateway/README.md) | Config files, `npm run dev`, tests |
-| [JFrog agent](Agents/jfrog-agent/README.md) | Memory backends, telemetry, env reference |
-| [Context optimizer](Agents/jfrog-agent/jfrog_agent/context_optimizer/README.md) | Trimming layers & presets |
-| [Contributing](CONTRIBUTING.md) | PRs and local tests |
+| Doc | Topic |
+|-----|--------|
+| [Quickstart](doc/howto/QUICKSTART.md) | OAuth, Cursor, monitoring |
+| [JFrog agent](Agents/jfrog-agent/README.md) | Memory backends, tracking, env vars |
+| [Context optimizer](Agents/jfrog-agent/jfrog_agent/context_optimizer/README.md) | Trimming layers and presets |
+| [Agent Safety Kit](agent-safety-kit/README.md) | Input guard and PII scanner |
+| [Gateway dev](mcp-gateway/README.md) | Local dev and tests |
 
----
+## Status and license
 
-## Project status
-
-Active reference implementation—APIs may evolve. **Issues, stars, and forks** help; contributions welcome.
-
-## Security
-
-Never commit `.env` or OAuth secrets. Prefer **secure mode** for shared environments. Run **input guard** on all user/tool text before LLM calls.
-
-## License
+Reference implementation; APIs may change. Do not commit `.env` or OAuth secrets.
 
 [Apache-2.0](LICENSE)

@@ -1,0 +1,36 @@
+# Local-only automation (personal push helpers)
+scripts/
+
+# TLS / corporate CA material (never commit)
+artifactory/certs/
+
+# Secrets and local-only files
+**/.env
+**/.env.local
+**/.env.*.local
+**/credentials.json
+**/token.json
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+
+# Test coverage and local tooling
+coverage/
+.claude/
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+*.log
+
+# Local TLS certs (gateway mkcert, etc.)
+**/certs/
+*.pem
+*.key
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
