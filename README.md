@@ -45,20 +45,84 @@ See [`Agents/jfrog-agent/README.md`](Agents/jfrog-agent/README.md) for memory ba
 
 ## Quick start
 
-**Prerequisites:** Docker Compose, Python 3.10+ for scripts.
+Goal: clone the repo, start Docker, and prove **MCP Gateway → MCP server** routing works (Artifactory in open mode; GitHub optional with OAuth).
 
-**1. Gateway and MCP servers** (open mode; no OAuth required to boot):
+### Prerequisites
+
+| Requirement | Notes |
+|-------------|--------|
+| [Docker Desktop](https://docs.docker.com/get-docker/) or Engine + Compose v2 | Docker must be **running** before any `docker compose` command |
+| Node.js 20+ | Only for the smoke-test scripts (`node scripts/…`); not required to build images |
+| Python 3.10+ | Optional: OAuth demo and Agent Safety Kit |
+| Free ports | `8090` gateway, `8091` Artifactory MCP (direct), `6379` Redis |
+
+### 1. Clone and start the stack
+
+**Important:** create `mcp-gateway/.env` and set `TOKEN_ENCRYPTION_KEY` **before** `docker compose`. The setup script does that from `.env.example`.
 
 ```bash
 git clone https://github.com/harish-gaggar/mcp-server-gateway.git
 cd mcp-server-gateway/mcp-gateway
-cp .env.example .env
-openssl rand -base64 32 # set TOKEN_ENCRYPTION_KEY in .env
+
+chmod +x scripts/setup-local-env.sh scripts/smoke-test.sh
+./scripts/setup-local-env.sh
 docker compose up -d --build
+```
+
+Wait until every service is healthy (first build can take several minutes):
+
+```bash
+docker compose ps
+```
+
+You should see **five** containers (`mcp-gateway`, `mcp-gateway-redis`, `artifactory-mcp-server`, `github-mcp-server`, `gdrive-mcp-server`) with status **Up (healthy)**.
+
+Gateway health check:
+
+```bash
 curl -s http://localhost:8090/health
 ```
 
-**2. Reference agent** (offline planner works without an LLM API key):
+**Success:** JSON contains `"status":"ok"`.
+
+### 2. Test gateway → MCP server (no OAuth secrets needed)
+
+This checks the gateway proxy to **Artifactory MCP** (initialize + `tools/list`) and direct health on all three MCP backends:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+**Success:** the script ends with `smoke-test: passed` and prints a tool count for Artifactory (for example `7 tools`).
+
+Manual equivalent (Artifactory only):
+
+```bash
+node scripts/e2e-test.mjs
+```
+
+### 3. Optional: GitHub MCP with OAuth (live GitHub API)
+
+Default **open mode** does not expose the GitHub namespace on the gateway. To test **gateway OAuth → GitHub MCP → GitHub API**:
+
+1. Create a [GitHub OAuth App](https://github.com/settings/developers) with callback URL **`http://localhost:8090/oauth2callback`**.
+2. In `mcp-gateway/.env`, set:
+   - `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET`
+   - `MCP_CONFIG_FILE=./configs/ci-mcp-config.yml`
+   - `OAUTH_CONFIG_FILE=./configs/ci-oauth-config.yml`
+3. Restart the gateway: `docker compose up -d gateway`
+4. Run (browser login + consent once):
+
+```bash
+chmod +x scripts/test-github-mcp-oauth.sh
+./scripts/test-github-mcp-oauth.sh
+```
+
+**Success:** `tools/list` shows GitHub tools and `list_repositories` returns JSON from your account. See also `python3 scripts/oauth-client-demo.py --namespace github --tool get_user_info --args '{"username":"YOUR_GITHUB_LOGIN"}'`.
+
+### 4. Optional: reference agent UI
+
+Start **after** step 1 (gateway on `:8090`):
 
 ```bash
 cd ../Agents/jfrog-agent
@@ -66,9 +130,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-UI: **http://localhost:8501** (Command, Insights, Security/Governance views).
+UI: **http://localhost:8501**. Default memory is SQLite. Spanner emulator: `docker compose --profile spanner up --build`.
 
-**3. Agent Safety Kit only** (no Docker):
+### 5. Optional: Agent Safety Kit (no Docker)
 
 ```bash
 cd ../../agent-safety-kit
@@ -76,9 +140,21 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]" && pytest -v
 ```
 
+### If something fails
+
+| Symptom | Fix |
+|---------|-----|
+| `Cannot connect to the Docker daemon` | Start Docker Desktop (or Colima) and retry |
+| `docker pull` / `x509: certificate signed by unknown authority` | Corporate TLS proxy: [mcp-gateway/certs/README.md](mcp-gateway/certs/README.md) |
+| `invalid IP` / `host-gateway` on Colima | Re-run `./scripts/setup-local-env.sh` (sets `HOST_DOCKER_INTERNAL`) |
+| Gateway exits on startup | Empty `TOKEN_ENCRYPTION_KEY` — run `./scripts/setup-local-env.sh` **before** `docker compose` |
+| Gateway exits with Google OIDC errors | Use `ci-oauth-config.yml` for GitHub-only tests, or set `GATEWAY_NODE_EXTRA_CA_CERTS` per setup script on proxied networks |
+| `smoke-test` cannot reach `:8090` | `docker compose ps` — wait for `mcp-gateway` healthy |
+| Cursor / HTTPS / monitoring | [doc/howto/QUICKSTART.md](doc/howto/QUICKSTART.md) |
+
 ## Secure mode and full setup
 
-For per-user OAuth (Google/GitHub), Cursor, monitoring, and troubleshooting, see **[doc/howto/QUICKSTART.md](doc/howto/QUICKSTART.md)**. Uncomment `OAUTH_CONFIG_FILE`, `MCP_CONFIG_FILE`, and provider client IDs in `mcp-gateway/.env.example`.
+Per-user OAuth (Google, GitHub, Drive), Cursor, and monitoring: **[doc/howto/QUICKSTART.md](doc/howto/QUICKSTART.md)** and `mcp-gateway/.env.example` (`OAUTH_CONFIG_FILE`, `MCP_CONFIG_FILE`, provider client IDs).
 
 ## Repository layout
 
@@ -91,10 +167,24 @@ mcp-server-gateway/
 └── doc/howto/QUICKSTART.md
 ```
 
+## Verify the stack (contributors and CI)
+
+From a clean clone, the path above (`setup-local-env.sh` → `docker compose up` → `smoke-test.sh`) is the minimum bar.
+
+Full local CI (unit tests + stack + GitHub routing when OAuth creds are set):
+
+```bash
+chmod +x mcp-gateway/scripts/verify-stack.sh
+mcp-gateway/scripts/verify-stack.sh
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Documentation
 
 | Doc | Topic |
 |-----|-------|
+| [Contributing](CONTRIBUTING.md) | Full verify script, corporate pip index |
 | [Quickstart](doc/howto/QUICKSTART.md) | OAuth, Cursor, monitoring |
 | [JFrog agent](Agents/jfrog-agent/README.md) | Memory backends, tracking, env vars |
 | [Context optimizer](Agents/jfrog-agent/jfrog_agent/context_optimizer/README.md) | Trimming layers and presets |

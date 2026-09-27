@@ -48,7 +48,9 @@ services:
     ports:
       - "8091:8091"
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      # Colima and some Linux engines reject the host-gateway keyword; set
+      # HOST_DOCKER_INTERNAL in .env (setup-local-env.sh does this on Colima).
+      - "host.docker.internal:${HOST_DOCKER_INTERNAL:-host-gateway}"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8091/health"]
       interval: 10s
@@ -60,6 +62,8 @@ services:
     build:
       context: ../github
       dockerfile: Dockerfile
+      additional_contexts:
+        certs: ./certs
     container_name: github-mcp-server
     environment:
       GITHUB_API_URL: https://api.github.com
@@ -92,7 +96,7 @@ services:
       PORT: 8092
       MCP_DISABLE_DNS_REBINDING: "true"
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:${HOST_DOCKER_INTERNAL:-host-gateway}"
     # Internal only — clients go through the OAuth-protected gateway.
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8092/health"]
@@ -111,8 +115,12 @@ services:
     # Mount configs so edits apply on `docker compose up -d gateway` (no rebuild).
     volumes:
       - ./configs:/app/configs:ro
+      - ./certs:/certs:ro
     environment:
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
+      # Use GATEWAY_NODE_EXTRA_CA_CERTS (not NODE_EXTRA_CA_CERTS): Compose prefers
+      # the shell over .env, and dev machines often export a host-only path.
+      NODE_EXTRA_CA_CERTS: ${GATEWAY_NODE_EXTRA_CA_CERTS:-}
       MCP_GATEWAY_CONFIG_FILE: ./configs/local.yml
       # Public origin clients use to reach the gateway. Defaults to localhost for
       # open-mode; set to your https tunnel URL for OAuth clients (Cursor/Claude).

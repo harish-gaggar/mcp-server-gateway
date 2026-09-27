@@ -1,0 +1,18 @@
+# CI / verify-stack: GitHub OAuth only (matches ci-mcp-config.yml github namespace).
+# Avoids Google OIDC discovery at gateway boot when testing GitHub behind the gateway.
+
+github:
+  oidc: false
+  issuer: https://github.com/login/oauth
+  client_id: ${GITHUB_OAUTH_CLIENT_ID}
+  client_secret: ${GITHUB_OAUTH_CLIENT_SECRET}
+  auth_url: https://github.com/login/oauth/authorize
+  token_url: https://github.com/login/oauth/access_token
+  supports_refresh: false
+  pkce: false
+  scope:
+    - read:user
+    - public_repo
+  user_info:
+    url: https://api.github.com/user
+    user_id_field: login

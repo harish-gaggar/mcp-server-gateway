@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PIP_INDEX_URL: https://pypi.org/simple
+
+jobs:
+  verify-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Full stack verify (tests + docker e2e)
+        run: |
+          chmod +x mcp-gateway/scripts/verify-stack.sh
+          mcp-gateway/scripts/verify-stack.sh
+
+  docker-agent-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build reference agent image
+        run: |
+          cd Agents/jfrog-agent
+          docker compose build jfrog-copilot

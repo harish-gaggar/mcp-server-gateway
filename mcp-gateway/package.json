@@ -11,6 +11,7 @@
     "compose:down": "docker compose down",
     "compose:logs": "docker compose logs -f",
     "test:e2e": "node scripts/e2e-test.mjs",
+    "test:e2e:stack": "node scripts/e2e-stack.mjs",
     "build": "node ./scripts/build.js",
     "test": "run-p lint typecheck vitest",
     "test:unit:ci": "npm run test",
