@@ -2,7 +2,12 @@
 scripts/
 
 # TLS / corporate CA material (never commit)
-artifactory/certs/
+artifactory/certs/*
+!artifactory/certs/.gitkeep
+gdrive/certs/*
+!gdrive/certs/.gitkeep
+github/certs/*
+!github/certs/.gitkeep
 
 # Secrets and local-only files
 **/.env
@@ -22,10 +27,14 @@ coverage/
 **/__pycache__/
 **/.pytest_cache/
 **/.venv/
+.verify-venv/
 *.log
 
-# Local TLS certs (gateway mkcert, etc.)
-**/certs/
+# Local TLS certs (never commit private keys or corporate bundles)
+**/certs/*
+!mcp-gateway/certs/README.md
+!mcp-gateway/certs/build-ca-bundle.sh
+!mcp-gateway/certs/.gitkeep
 *.pem
 *.key
 

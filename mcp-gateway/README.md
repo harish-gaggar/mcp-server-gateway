@@ -23,20 +23,18 @@ Each backend is registered in YAML under `mcp_servers`. The gateway forwards MCP
 
 ## Quick start (Docker)
 
+Follow the [repository README](../README.md#quick-start). Short version:
+
 ```bash
-cd mcp-gateway
-
-# One-time setup
-cp .env.example .env
-openssl rand -base64 32   # paste into TOKEN_ENCRYPTION_KEY in .env
-
-# Optional: set real JFrog credentials in .env
-# ARTIFACTORY_BASE_URL=https://your-instance.jfrog.io/artifactory
-# ARTIFACTORY_ACCESS_TOKEN=your-access-or-identity-token
-
+chmod +x scripts/setup-local-env.sh scripts/smoke-test.sh
+./scripts/setup-local-env.sh          # .env + TOKEN_ENCRYPTION_KEY (required before compose)
 docker compose up -d --build
-npm run test:e2e
+docker compose ps                     # five services healthy
+curl -s http://localhost:8090/health
+./scripts/smoke-test.sh               # gateway → Artifactory MCP + backend health
 ```
+
+GitHub OAuth end-to-end: `./scripts/test-github-mcp-oauth.sh` (see root README).
 
 Endpoints:
 

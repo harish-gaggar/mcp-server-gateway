@@ -1,48 +1,44 @@
-# Build stage
+# Corporate TLS-inspecting proxies re-sign registry.npmjs.org; Node needs NODE_EXTRA_CA_CERTS.
+# Build context supplies optional certs via Compose additional_contexts (no-op when empty).
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Copy package files and TypeScript config
+RUN --mount=type=bind,from=certs,target=/tmp/certs \
+    cat /tmp/certs/*-ca.pem > /usr/local/share/corporate-ca.crt 2>/dev/null \
+    || touch /usr/local/share/corporate-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/corporate-ca.crt
+
 COPY package*.json ./
 COPY tsconfig.json ./
-
-# Copy source code
 COPY src/ ./src/
 
-# Install ALL dependencies (including dev dependencies for TypeScript)
-RUN npm ci --production=false
+RUN npm ci --production=false --no-audit
 
-# Build TypeScript to JavaScript
 RUN npm run build
 
-# Production stage
 FROM node:20-alpine
-
 WORKDIR /app
 
 RUN apk add --no-cache wget
 
+RUN --mount=type=bind,from=certs,target=/tmp/certs \
+    cat /tmp/certs/*-ca.pem > /usr/local/share/corporate-ca.crt 2>/dev/null \
+    || touch /usr/local/share/corporate-ca.crt
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/corporate-ca.crt
+
 COPY package*.json ./
 
-# Install ONLY production dependencies
-RUN npm ci --production
+RUN npm ci --production --no-audit
 
-# Copy compiled JavaScript from builder stage
 COPY --from=builder /app/build ./build
 
-# Expose the MCP server port
 EXPOSE 8080
 
-# Set environment variables (will be overridden by docker-compose or k8s)
 ENV GITHUB_ENTERPRISE_URL=""
 ENV GITHUB_TOKEN=""
 ENV PORT="8080"
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Run the streamable-HTTP MCP server (gateway-compatible)
 CMD ["node", "build/server.js"]
-
