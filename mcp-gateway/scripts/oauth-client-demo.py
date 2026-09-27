@@ -50,6 +50,20 @@ CALLBACK_HOST = "localhost"
 CALLBACK_PORT = 8765
 CALLBACK_PATH = "/callback"
 
+# OAuth scope sent on the gateway authorize URL (upstream provider scopes are in
+# oauth config). Must match what the namespace expects.
+NAMESPACE_SCOPES = {
+    "artifactory": "openid email",
+    "github": "read:user public_repo",
+    "gdrive": "openid email https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents",
+    "google-drive": "openid email https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents",
+}
+DEFAULT_TOOLS = {
+    "artifactory": "list_repositories",
+    "github": "list_repositories",
+    "gdrive": "list_files",
+}
+
 
 def b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
@@ -154,7 +168,16 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--gateway", default=DEFAULT_GATEWAY)
     ap.add_argument("--namespace", default=DEFAULT_NAMESPACE)
-    ap.add_argument("--tool", default="list_repositories")
+    ap.add_argument(
+        "--scope",
+        default=None,
+        help="OAuth scope for the authorize step (default: namespace-specific)",
+    )
+    ap.add_argument(
+        "--tool",
+        default=None,
+        help="MCP tool to call (default: namespace-specific)",
+    )
     ap.add_argument("--args", default="{}", help="JSON object of tool arguments")
     ap.add_argument("--client-type", default=None,
                     help="value for the x-mcp-client-type attribution header "
@@ -173,6 +196,8 @@ def main():
 
     gw = args.gateway.rstrip("/")
     ns = args.namespace
+    oauth_scope = args.scope or NAMESPACE_SCOPES.get(ns, "openid email")
+    tool_name = args.tool or DEFAULT_TOOLS.get(ns, "list_repositories")
     mcp_url = f"{gw}/{ns}/mcp"
     redirect_uri = f"http://{CALLBACK_HOST}:{CALLBACK_PORT}{CALLBACK_PATH}"
 
@@ -243,9 +268,10 @@ def main():
         "code_challenge": challenge,
         "code_challenge_method": "S256",
         "state": state,
-        "scope": "openid email",
+        "scope": oauth_scope,
     })
-    print("    Opening browser. Sign in with Google, then click Authorize on the")
+    provider_hint = "GitHub" if ns == "github" else "Google"
+    print(f"    Opening browser. Sign in with {provider_hint}, then click Authorize on the")
     print("    gateway consent screen. If the browser does not open, visit:")
     print(f"    {authorize_url}")
     webbrowser.open(authorize_url)
@@ -304,12 +330,25 @@ def main():
     http_json("POST", mcp_url, headers={**auth, **sess_hdr},
               data={"jsonrpc": "2.0", "method": "notifications/initialized"})
 
-    step(6, f"tools/call -> {args.tool}")
+    step(6, "tools/list")
+    status, _, body = http_json(
+        "POST", mcp_url, headers={**auth, **sess_hdr},
+        data={"jsonrpc": "2.0", "id": 11, "method": "tools/list"},
+    )
+    tools_result = parse_sse_json(body)
+    tool_names = [
+        t.get("name") for t in (tools_result or {}).get("result", {}).get("tools", [])
+    ]
+    print(f"    status={status} tools ({len(tool_names)}): {', '.join(tool_names[:12])}")
+    if len(tool_names) > 12:
+        print(f"    ... and {len(tool_names) - 12} more")
+
+    step(7, f"tools/call -> {tool_name}")
     tool_args = json.loads(args.args)
     status, _, body = http_json(
         "POST", mcp_url, headers={**auth, **sess_hdr},
         data={"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-              "params": {"name": args.tool, "arguments": tool_args}},
+              "params": {"name": tool_name, "arguments": tool_args}},
     )
     result = parse_sse_json(body)
     print(f"    status={status}")

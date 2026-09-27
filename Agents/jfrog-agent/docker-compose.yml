@@ -48,13 +48,12 @@ services:
     volumes:
       # Persist the one-time OAuth token + audit trail + sqlite memory.
       - jfrog-copilot-data:/data
-    depends_on:
-      - spanner-emulator
     restart: unless-stopped
 
-  # Local Cloud Spanner emulator for durable agent memory (opt-in backend).
-  # Data is in-memory and resets when this container restarts.
+  # Optional: only needed when JFROG_AGENT_MEMORY_BACKEND=spanner
+  # Start with: docker compose --profile spanner up --build
   spanner-emulator:
+    profiles: ["spanner"]
     image: gcr.io/cloud-spanner-emulator/emulator:latest
     container_name: jfrog-spanner-emulator
     ports:

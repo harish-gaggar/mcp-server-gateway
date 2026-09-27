@@ -4,7 +4,14 @@ FROM python:3.13-alpine
 WORKDIR /app
 
 # Install system dependencies
-RUN apk add --no-cache gcc musl-dev libffi-dev wget
+RUN apk add --no-cache gcc musl-dev libffi-dev wget ca-certificates
+
+# Optional corporate root CA (TLS-inspecting proxy). No-op when certs/ is empty.
+COPY certs/ /usr/local/share/ca-certificates/
+RUN if ls /usr/local/share/ca-certificates/*.crt >/dev/null 2>&1; then \
+      update-ca-certificates && \
+      echo "Installed corporate CA(s) into the system trust store"; \
+    fi
 
 # Copy requirements first for better caching
 COPY requirements.txt .
