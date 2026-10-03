@@ -184,7 +184,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 | Doc | Topic |
 |-----|-------|
-| [Contributing](CONTRIBUTING.md) | Full verify script, corporate pip index |
+| [Contributing](CONTRIBUTING.md) | Full verify script and contributor workflow |
 | [Quickstart](doc/howto/QUICKSTART.md) | OAuth, Cursor, monitoring |
 | [JFrog agent](Agents/jfrog-agent/README.md) | Memory backends, tracking, env vars |
 | [Context optimizer](Agents/jfrog-agent/jfrog_agent/context_optimizer/README.md) | Trimming layers and presets |
